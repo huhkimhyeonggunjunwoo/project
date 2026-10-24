@@ -146,7 +146,9 @@ def test_private_greeting_only_reaches_the_newcomer(client: TestClient) -> None:
         assert notes[0]["text"] == f"Hi {me['name']}, welcome to One House!"
         assert all(n["userId"] == "agent" and "id" not in n for n in notes)
         # The last one comes with a first thing to ask, in English like the notes.
-        assert [n.get("hints") for n in notes] == [None, None, None, ["Find someone who's a good match for me"]]
+        assert [n.get("hints") for n in notes] == [
+            None, None, None, ["Find someone who's a good match for me", "I want to change my name"]
+        ]
 
         with client.websocket_connect("/ws", headers=ORIGIN) as b:
             hello(b)

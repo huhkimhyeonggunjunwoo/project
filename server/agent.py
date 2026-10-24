@@ -114,7 +114,7 @@ one person, there's no need to keep repeating their name.
 TOOL_RECORD = re.compile(r"<tool_record>.*?</tool_record>\s*", re.DOTALL)
 SENTENCE_END = re.compile(r"(?<=[.!?。！？])\s+")
 # Offered under the welcome notes, before anything else has been said.
-STARTER_HINT = "Find someone who's a good match for me"
+STARTER_HINTS = ["Find someone who's a good match for me", "I want to change my name"]
 # Longest wait before a message, however long it is (see Agent.typing_time).
 MAX_TYPING_SECONDS = 3.0
 
@@ -338,7 +338,7 @@ class Agent:
     def greeting(self, user: User) -> list[dict[str, Any]]:
         """Notes only `user` sees when they connect, sent a moment apart. They
         aren't stored, so they aren't part of the room's history or the
-        agent's context. The last one comes with the starter hint."""
+        agent's context. The last one comes with the starter hints."""
         texts = [
             f"Hi {user.name}, welcome to One House!",
             f"I'm {self.user.name}. Everyone here shares this one room, so whatever you send, "
@@ -352,7 +352,7 @@ class Agent:
             {"key": f"welcome-{i}", "userId": self.user.id, "userName": self.user.name, "text": text, "createdAt": now}
             for i, text in enumerate(texts, 1)
         ]
-        notes[-1]["hints"] = [STARTER_HINT]
+        notes[-1]["hints"] = STARTER_HINTS
         return notes
 
     def typing_time(self, text: str) -> float:
