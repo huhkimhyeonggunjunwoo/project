@@ -41,6 +41,8 @@ One House is a single shared chat room where every visitor talks to the same AI 
 - A typing indicator shows while it works, and every client knows whom it is answering.
 - It replies in the language the person used, in plain text.
 
+![one connecting people in the room](.github/image1.webp)
+
 ### Tools, done in the open
 
 Every tool call is posted to the room as a status line, so everyone can see what the agent did. Clicking it expands the exact input, the result, and any pages a search found.
