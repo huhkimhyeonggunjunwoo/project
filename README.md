@@ -14,6 +14,7 @@ One House is a single shared chat room where every visitor talks to the same AI 
 ![SQLite](https://img.shields.io/badge/SQLite-aiosqlite-003B57?style=flat-square&logo=sqlite&logoColor=white)
 ![Claude](https://img.shields.io/badge/Claude-Sonnet_5.5-D97757?style=flat-square&logo=anthropic&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-managed-DE5FE9?style=flat-square&logo=uv&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
 ![One House screenshot](.github/screenshot.png)
 
@@ -212,3 +213,7 @@ npm run test:server
 ```
 
 The tests cover the chat protocol, the agent's reply logic, memory and hints.
+
+## License
+
+[MIT](LICENSE)
