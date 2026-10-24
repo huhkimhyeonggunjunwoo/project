@@ -279,3 +279,28 @@ def test_everyone_sees_the_agent_typing_until_it_answers(
                 elif frame["type"] == "message":
                     seen.append(("message", frame["message"]["text"]))
             assert seen == [("message", "hello?"), ("typing", True), ("message", "hi!"), ("typing", False)]
+
+
+def test_past_tool_calls_stay_in_the_agents_turns() -> None:
+    fetch = {"name": "web_fetch", "input": {"url": "https://x.dev"}, "output": "Opened X", "isError": False}
+    history = [
+        {"id": 1, "userId": "a", "userName": "jun", "text": "open https://x.dev", "contextId": None},
+        {"id": 2, "userId": AGENT_ID, "userName": "one", "text": "Opened X", "contextId": 1, "tool": fetch},
+        {"id": 3, "userId": AGENT_ID, "userName": "one", "text": "It's a dev blog.", "contextId": 1},
+    ]
+    assert to_turns(history)[1] == {
+        "role": "assistant",
+        "content": '<tool_record>web_fetch {"url": "https://x.dev"} -> Opened X</tool_record>\nIt\'s a dev blog.',
+    }
+
+
+def test_imitated_tool_records_are_not_posted(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def reply(self: Agent, messages: list) -> SimpleNamespace:
+        return said("<tool_record>web_fetch {} -> Opened Y</tool_record>\nSure, here it is.")
+
+    monkeypatch.setattr(Agent, "generate", reply)
+    with client.websocket_connect("/ws", headers=ORIGIN) as ws:
+        hello(ws)
+        ws.send_json({"type": "send", "text": "open it"})
+        receive(ws)
+        assert receive(ws)["message"]["text"] == "Sure, here it is."
