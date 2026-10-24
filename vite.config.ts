@@ -27,5 +27,7 @@ export default defineConfig({
   },
   preview: {
     proxy: apiProxy,
+    // Cloudflare quick tunnel URLs (`npm run share:tunnel`).
+    allowedHosts: ['.trycloudflare.com'],
   },
 });

@@ -256,7 +256,7 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
   };
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[56%] bottom-0 flex justify-center px-4 pb-[max(1rem,8vh)]">
+    <div className="pointer-events-none absolute inset-x-0 top-[56%] bottom-0 flex justify-center px-4 pb-[max(1rem,8vh)] md:pb-8">
       <div className="flex min-h-0 w-full max-w-137 flex-col gap-3">
         {loaded > 0 && (
           <MessageScroller className="pointer-events-auto flex-1">
