@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     history_page_size: int = 30
     max_message_length: int = 1000
 
+    # The room's agent. Unset key = the SDK's own lookup (ANTHROPIC_API_KEY
+    # in the real environment, or an `ant auth login` profile).
+    anthropic_api_key: str | None = None
+    agent_name: str = "one"
+    agent_model: str = "claude-sonnet-5-5"
+    # How many of the latest room messages the agent reads before replying.
+    agent_context_messages: int = 50
+
     @property
     def database_file(self) -> Path:
         path = self.database_path

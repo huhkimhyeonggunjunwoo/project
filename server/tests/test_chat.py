@@ -5,14 +5,21 @@ import pytest
 from fastapi.testclient import TestClient
 
 import main
+from agent import Agent
 from db import Database
 
 ORIGIN = {"origin": "http://localhost:5173"}
 
 
+async def silent(self: Agent, turns: list) -> None:
+    return None
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setattr(main, "db", Database(tmp_path / "test.db"))
+    # Never call Claude in tests; tests that want replies swap this out.
+    monkeypatch.setattr(Agent, "generate", silent)
     with TestClient(main.app) as c:
         yield c
 

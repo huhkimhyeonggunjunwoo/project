@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from agent import Agent
 from config import settings
 from db import Database
 from room import Room
@@ -14,12 +15,25 @@ HELLO_TIMEOUT_SECONDS = 10
 
 db = Database(settings.database_file)
 room = Room()
+agent: Agent | None = None
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global agent
     await db.connect()
+    agent = Agent(
+        db,
+        room,
+        name=settings.agent_name,
+        model=settings.agent_model,
+        context_messages=settings.agent_context_messages,
+        api_key=settings.anthropic_api_key,
+    )
+    await agent.start()
     yield
+    await agent.close()
+    agent = None
     await db.close()
 
 
@@ -69,6 +83,7 @@ async def chat_socket(ws: WebSocket) -> None:
     server → {"type": "welcome", "user": {...}, "token": "...", "history": {...}}
     client → {"type": "send", "text": "...", "clientId": "..."}
     server → {"type": "message", "message": {...}, "clientId"?: "..."}   (to everyone)
+    server → {"type": "message", "message": {...}}   (the agent's reply, to everyone)
     server → {"type": "error", "message": "..."}
     """
     if not _origin_allowed(ws.headers.get("origin")):
@@ -123,6 +138,8 @@ async def chat_socket(ws: WebSocket) -> None:
 
             message = await db.add_message(user, text)
             await room.broadcast({"type": "message", "message": message}, sender=ws, sender_extra=extra)
+            if agent is not None:
+                agent.notify()
     except WebSocketDisconnect:
         pass
     finally:

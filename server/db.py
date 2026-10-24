@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS messages (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    TEXT NOT NULL REFERENCES users(id),
     text       TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    -- Agent replies only: id of the newest message it had read when replying.
+    context_id INTEGER
 );
 """
 
@@ -70,6 +72,10 @@ class Database:
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.execute("PRAGMA foreign_keys=ON")
         await self._conn.executescript(SCHEMA)
+        async with self._conn.execute("PRAGMA table_info(messages)") as cursor:
+            columns = {row["name"] for row in await cursor.fetchall()}
+        if "context_id" not in columns:
+            await self._conn.execute("ALTER TABLE messages ADD COLUMN context_id INTEGER")
         await self._conn.commit()
 
     async def close(self) -> None:
@@ -90,6 +96,17 @@ class Database:
         await self.conn.commit()
         return user, token
 
+    async def ensure_user(self, user: User) -> None:
+        """Creates a fixed, login-less user (the agent) if it doesn't exist yet.
+        Its token hash isn't a sha256 digest, so no token can ever match it."""
+        now = _now()
+        await self.conn.execute(
+            "INSERT INTO users (id, name, token_hash, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(id) DO UPDATE SET name = excluded.name",
+            (user.id, user.name, f"!{user.id}", now, now),
+        )
+        await self.conn.commit()
+
     async def user_by_token(self, token: str) -> User | None:
         token_hash = _hash_token(token)
         async with self.conn.execute(
@@ -102,10 +119,10 @@ class Database:
         await self.conn.commit()
         return User(id=row["id"], name=row["name"])
 
-    async def add_message(self, user: User, text: str) -> dict[str, Any]:
+    async def add_message(self, user: User, text: str, context_id: int | None = None) -> dict[str, Any]:
         cursor = await self.conn.execute(
-            "INSERT INTO messages (user_id, text, created_at) VALUES (?, ?, ?)",
-            (user.id, text, _now()),
+            "INSERT INTO messages (user_id, text, created_at, context_id) VALUES (?, ?, ?, ?)",
+            (user.id, text, _now(), context_id),
         )
         await self.conn.commit()
         async with self.conn.execute(
@@ -132,3 +149,15 @@ class Database:
         messages = [_message(row) for row in rows[:limit]]
         messages.reverse()
         return {"messages": messages, "hasMore": has_more}
+
+    async def recent_context(self, limit: int) -> list[dict[str, Any]]:
+        """The newest `limit` messages, oldest first, with each agent reply's
+        context_id (what the agent had read when it wrote it)."""
+        async with self.conn.execute(
+            "SELECT m.id, m.user_id, u.name, m.text, m.created_at, m.context_id"
+            " FROM messages m JOIN users u ON u.id = m.user_id"
+            " ORDER BY m.id DESC LIMIT ?",
+            (limit,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [{**_message(row), "contextId": row["context_id"]} for row in reversed(rows)]
