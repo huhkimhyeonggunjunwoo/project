@@ -24,6 +24,12 @@ export interface ServerMessage {
   createdAt: string
 }
 
+/** A note only this client gets. Not stored, so it has no id. */
+export interface PrivateMessage extends Omit<ServerMessage, "id"> {
+  /** Identifies the note, so a reconnect doesn't show it twice. */
+  key: string
+}
+
 export interface MessagePage {
   /** Oldest first. */
   messages: ServerMessage[]
@@ -42,6 +48,7 @@ export type ServerEvent =
       agent: ChatUser | null
     }
   | { type: "presence"; users: ChatUser[] }
+  | { type: "private"; message: PrivateMessage }
   | { type: "message"; message: ServerMessage; clientId?: string }
   | { type: "error"; message: string }
 

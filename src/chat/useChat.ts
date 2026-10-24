@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react"
 
 import {
   fetchMessagesBefore,
   wsUrl,
   type ChatUser,
   type MessagePage,
+  type PrivateMessage,
   type ServerEvent,
   type ServerMessage,
 } from "@/chat/api"
@@ -19,6 +20,13 @@ export interface ChatMessage extends Omit<ServerMessage, "id"> {
   /** Server id; null until the server has stored it. */
   id: number | null
   pending: boolean
+  /** Only visible to me; never stored on the server. */
+  private: boolean
+}
+
+interface PrivateNote extends ChatMessage {
+  /** Shown right after this stored message (the newest one when it arrived). */
+  afterId: number
 }
 
 interface State {
@@ -30,6 +38,8 @@ interface State {
   status: ConnectionStatus
   /** Stored messages sorted by id, then this client's pending ones. */
   messages: ChatMessage[]
+  /** Notes only I can see, in arrival order. */
+  privates: PrivateNote[]
   hasMore: boolean
 }
 
@@ -37,6 +47,7 @@ type Action =
   | { type: "status"; status: ConnectionStatus }
   | { type: "welcome"; user: ChatUser; history: MessagePage; online: ChatUser[]; agent: ChatUser | null }
   | { type: "presence"; users: ChatUser[] }
+  | { type: "private"; message: PrivateMessage }
   | { type: "received"; message: ServerMessage; clientId?: string }
   | { type: "pending"; message: ChatMessage }
   | { type: "older"; page: MessagePage }
@@ -47,10 +58,16 @@ const initialState: State = {
   online: [],
   status: "connecting",
   messages: [],
+  privates: [],
   hasMore: false,
 }
 
-const fromServer = (m: ServerMessage, key = `m${m.id}`): ChatMessage => ({ ...m, key, pending: false })
+const fromServer = (m: ServerMessage, key = `m${m.id}`): ChatMessage => ({
+  ...m,
+  key,
+  pending: false,
+  private: false,
+})
 
 function split(messages: ChatMessage[]) {
   return {
@@ -87,6 +104,7 @@ function reducer(state: State, action: Action): State {
         online: action.online,
         status: "open",
         messages: [...(reset ? page : mergeById(stored, page)), ...pending],
+        privates: state.privates,
         hasMore: reset ? action.history.hasMore : state.hasMore,
       }
     }
@@ -104,6 +122,14 @@ function reducer(state: State, action: Action): State {
     case "presence":
       return { ...state, online: action.users }
 
+    case "private": {
+      const key = `p-${action.message.key}`
+      if (state.privates.some((p) => p.key === key)) return state
+      const afterId = split(state.messages).stored.at(-1)?.id ?? 0
+      const note: PrivateNote = { ...action.message, key, id: null, pending: false, private: true, afterId }
+      return { ...state, privates: [...state.privates, note] }
+    }
+
     case "pending":
       return { ...state, messages: [...state.messages, action.message] }
 
@@ -113,6 +139,18 @@ function reducer(state: State, action: Action): State {
       return { ...state, messages: [...mergeById(stored, page), ...pending], hasMore: action.page.hasMore }
     }
   }
+}
+
+/** Stored messages with my private notes slotted in, then pending ones. */
+function withPrivates(messages: ChatMessage[], privates: PrivateNote[]): ChatMessage[] {
+  if (privates.length === 0) return messages
+  const out: ChatMessage[] = []
+  let next = 0
+  for (const m of messages) {
+    while (next < privates.length && (m.pending || m.id! > privates[next].afterId)) out.push(privates[next++])
+    out.push(m)
+  }
+  return [...out, ...privates.slice(next)]
 }
 
 function loadToken(): string | null {
@@ -179,6 +217,8 @@ export function useChat() {
           for (const m of stateRef.current.messages) {
             if (m.pending) ws.send(JSON.stringify({ type: "send", text: m.text, clientId: m.key }))
           }
+        } else if (event.type === "private") {
+          dispatch({ type: "private", message: event.message })
         } else if (event.type === "presence") {
           dispatch({ type: "presence", users: event.users })
         } else if (event.type === "message") {
@@ -228,6 +268,7 @@ export function useChat() {
         text,
         createdAt: new Date().toISOString(),
         pending: true,
+        private: false,
       },
     })
     ws.send(JSON.stringify({ type: "send", text, clientId: key }))
@@ -249,7 +290,10 @@ export function useChat() {
     }
   }, [])
 
-  return { ...state, send, loadOlder }
+  const { privates, ...rest } = state
+  const messages = useMemo(() => withPrivates(state.messages, privates), [state.messages, privates])
+
+  return { ...rest, messages, send, loadOlder }
 }
 
 export type Chat = ReturnType<typeof useChat>

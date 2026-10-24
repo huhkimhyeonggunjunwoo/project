@@ -25,8 +25,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
 
 
 def receive(ws) -> dict:
-    """Next frame, skipping presence updates."""
-    while (frame := ws.receive_json())["type"] == "presence":
+    """Next frame, skipping presence updates and private notes."""
+    while (frame := ws.receive_json())["type"] in ("presence", "private"):
         pass
     return frame
 
@@ -131,3 +131,24 @@ def test_online_users_are_announced(client: TestClient) -> None:
             assert receive(a)["message"]["text"] == "still one of me"
 
         assert presence(a) == [first["user"]["name"]]
+
+
+def test_private_greeting_only_reaches_the_newcomer(client: TestClient) -> None:
+    with client.websocket_connect("/ws", headers=ORIGIN) as a:
+        hello(a)
+        greeting = a.receive_json()
+        assert greeting["type"] == "private"
+        assert greeting["message"]["key"] == "welcome"
+        assert greeting["message"]["userId"] == "agent"
+        assert "id" not in greeting["message"]
+
+        with client.websocket_connect("/ws", headers=ORIGIN) as b:
+            hello(b)
+            b.send_json({"type": "send", "text": "hi"})
+            # Everything a gets up to b's message: presence updates, never b's greeting.
+            types = []
+            while (frame := a.receive_json())["type"] != "message":
+                types.append(frame["type"])
+        assert "private" not in types
+
+    assert client.get("/messages").json()["messages"][0]["text"] == "hi"

@@ -8,6 +8,7 @@ answering are picked up together in the next reply.
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 import anthropic
@@ -90,6 +91,21 @@ class Agent:
         self.client = anthropic.AsyncAnthropic(api_key=api_key)
         self._task: asyncio.Task[None] | None = None
         self._dirty = False
+
+    def greeting(self, user: User) -> dict[str, Any]:
+        """A note only `user` sees when they connect. It isn't stored, so it
+        isn't part of the room's history or the agent's context."""
+        return {
+            "key": "welcome",
+            "userId": self.user.id,
+            "userName": self.user.name,
+            "text": (
+                f"Hi {user.name}, welcome to One House! I'm {self.user.name}. Everyone here shares "
+                "this one room, so whatever you send, and whatever I say back, everyone can see. "
+                "Ask me anything."
+            ),
+            "createdAt": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+        }
 
     async def start(self) -> None:
         await self.db.ensure_user(self.user)

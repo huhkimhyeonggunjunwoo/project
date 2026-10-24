@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react"
-import { ArrowRightIcon } from "lucide-react"
+import { ArrowRightIcon, EyeOffIcon } from "lucide-react"
 
 import type { Chat } from "@/chat/useChat"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -112,17 +112,26 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
               <MessageScrollerContent className="justify-end gap-2.5 px-1 pb-1">
                 {messages.map((m, i) => {
                   const mine = m.userId === me?.id
-                  const showName = !mine && messages[i - 1]?.userId !== m.userId
+                  const prev = messages[i - 1]
+                  const showName = !mine && !m.private && (prev?.userId !== m.userId || prev.private)
                   return (
                     <MessageScrollerItem key={m.key} messageId={m.key}>
                       <Message align={mine ? "end" : "start"}>
                         <MessageContent className="gap-1">
                           {showName && <MessageHeader>{m.userName}</MessageHeader>}
+                          {m.private && (
+                            <MessageHeader className="gap-1">
+                              <EyeOffIcon className="size-3" />
+                              Only visible to you
+                            </MessageHeader>
+                          )}
                           <Bubble
-                            variant={mine ? "default" : "secondary"}
+                            variant={mine || m.private ? "default" : "secondary"}
                             className={cn(
                               // My messages: white bubble with dark text.
                               mine && "[--primary:oklch(1_0_0)] [--primary-foreground:oklch(0.145_0_0)]",
+                              // Only-me notes: yellow bubble with dark text.
+                              m.private && "[--primary:oklch(0.852_0.199_91.936)] [--primary-foreground:oklch(0.145_0_0)]",
                               m.pending && "opacity-60"
                             )}
                           >

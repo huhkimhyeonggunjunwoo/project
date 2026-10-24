@@ -85,6 +85,7 @@ async def chat_socket(ws: WebSocket) -> None:
     client → {"type": "send", "text": "...", "clientId": "..."}
     server → {"type": "message", "message": {...}, "clientId"?: "..."}   (to everyone)
     server → {"type": "message", "message": {...}}   (the agent's reply, to everyone)
+    server → {"type": "private", "message": {"key": "...", ...}}   (just this client, not stored)
     server → {"type": "presence", "users": [{...}]}   (to everyone, when who's online changes)
     server → {"type": "error", "message": "..."}
     """
@@ -124,6 +125,8 @@ async def chat_socket(ws: WebSocket) -> None:
                 "agent": user_json(agent.user) if agent is not None else None,
             }
         )
+        if agent is not None:
+            await ws.send_json({"type": "private", "message": agent.greeting(user)})
         await room.sync_presence()
 
         while True:
