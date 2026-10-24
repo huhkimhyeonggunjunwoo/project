@@ -35,18 +35,23 @@ def test_achievements_are_earned_and_kept(client: TestClient, monkeypatch: pytes
         steps.append(list(messages))
         last = messages[-1]["content"]
         if isinstance(last, str) and "match" in last:
-            return calls_tool("list_people")
+            people = [{"name": other["name"], "headline": "", "reason": "", "links": []}]
+            return calls_tool("recommend_people", for_name=last.split(":")[0], people=people)  # type: ignore[arg-type]
         if isinstance(last, str) and "name" in last:
             return calls_tool("rename_user", current_name=last.split(":")[0], new_name="Jun")
         return said("ok")
 
     monkeypatch.setattr(Agent, "generate", step)
 
+    # Someone to be matched with.
+    with client.websocket_connect("/ws", headers=ORIGIN) as ws:
+        other = hello(ws)["user"]
+
     with client.websocket_connect("/ws", headers=ORIGIN) as ws:
         first = hello(ws)
         assert first["achievements"] == []
 
-        # Looking for people before sharing a profile doesn't count.
+        # Being recommended people before sharing a profile doesn't count.
         ws.send_json({"type": "send", "text": "find me a match"})
         assert answered(ws) == []
         ws.send_json({"type": "send", "text": "here's me: github.com/jun"})

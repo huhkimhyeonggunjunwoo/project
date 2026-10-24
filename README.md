@@ -53,6 +53,7 @@ Every tool call is posted to the room as a status line, so everyone can see what
 | `web_fetch`   | Opens a link that someone sent or a search found.                                                                     |
 | `rename_user` | Renames a person, only when that person asks for it themselves. Names are unique, one line, at most 24 characters.    |
 | `list_people` | Lists everyone who has ever been in the room: online, offline (with last seen date), and people added from documents. |
+| `recommend_people` | Recommends one to three people to whoever asked, as JSON (name, headline, reason, links). The server checks each name and adds the links they shared and whether they're online; their profiles float up on the asker's screen. |
 | `read_notes`  | Opens a page of the agent's long-term memory.                                                                         |
 
 A reply is limited to 6 model steps, so a confused tool loop can't run forever.

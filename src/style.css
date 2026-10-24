@@ -83,6 +83,24 @@
         50% { opacity: 1; filter: blur(0); }
         to { opacity: 1; transform: none; filter: none; }
     }
+
+    /* A recommended person: they surface slowly from below, out of a blur,
+       keep drifting gently up and down as if floating, and when they go,
+       rise away into a blur. */
+    --animate-float-in: float-in 1.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    @keyframes float-in {
+        from { opacity: 0; transform: translateY(40px) scale(0.94); filter: blur(14px); }
+        to { opacity: 1; transform: none; filter: none; }
+    }
+    --animate-float-out: float-out 0.9s cubic-bezier(0.7, 0, 0.84, 0) both;
+    @keyframes float-out {
+        to { opacity: 0; transform: translateY(-24px) scale(0.96); filter: blur(12px); }
+    }
+    --animate-drift: drift 6s ease-in-out infinite;
+    @keyframes drift {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+    }
 }
 
 :root {

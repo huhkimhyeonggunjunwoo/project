@@ -25,6 +25,24 @@ export interface ToolCall {
   isError: boolean
   /** Pages a web search returned. */
   results?: { title: string; url: string }[]
+  /** recommend_people: id of the person the recommendation is for. */
+  for?: string
+  /** recommend_people: who the agent recommended, best fit first. */
+  people?: RecommendedPerson[]
+}
+
+/** Someone the agent recommended, as the server filled them in. */
+export interface RecommendedPerson {
+  id: string
+  name: string
+  /** Who they are, in a few words. */
+  headline: string
+  /** Why they fit, written to the person they were recommended to. */
+  reason: string
+  /** Their profiles: the ones they shared first. */
+  links: string[]
+  /** Whether they were online when recommended. */
+  online: boolean
 }
 
 export interface ServerMessage {

@@ -40,6 +40,9 @@ export class Agent {
 
   private time = 0;
   private pointer: Vec | null = null;
+  // Something to look at for a while (see glance), in canvas coordinates.
+  private focus: Vec | null = null;
+  private focusUntil = -Infinity;
   private lastMoveAt = -Infinity;
   private wasIdle = true;
   private saccadeIn = 0.6;
@@ -115,6 +118,13 @@ export class Agent {
     this.pop(1.4);
   }
 
+  /** Looks at a screen point for a few seconds, e.g. at something that just appeared. */
+  glance(x: number, y: number, seconds = 2.5): void {
+    this.focus = { x: x - this.originX, y: y - this.originY };
+    this.focusUntil = this.time + seconds;
+    this.pop(1.2);
+  }
+
   /** While the agent is writing a reply, its eyes cycle through the rainbow. */
   setThinking(thinking: boolean): void {
     this.glow.target = thinking ? 1 : 0;
@@ -124,7 +134,11 @@ export class Agent {
     this.time += dt;
 
     const idle = !this.pointer || this.time - this.lastMoveAt > IDLE_AFTER;
-    if (idle) {
+    if (this.focus && this.time < this.focusUntil) {
+      const g = this.gazeToward(this.focus);
+      this.gazeX.target = g.x;
+      this.gazeY.target = g.y;
+    } else if (idle) {
       this.saccadeIn -= dt;
       if (this.saccadeIn <= 0) this.lookAround();
     } else {

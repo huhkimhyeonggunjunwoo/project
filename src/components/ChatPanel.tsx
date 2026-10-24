@@ -9,7 +9,7 @@ import {
 } from "react";
 import { ArrowRightIcon, EyeIcon, EyeOffIcon } from "lucide-react";
 
-import type { ChatUser } from "@/chat/api";
+import type { ChatUser, RecommendedPerson } from "@/chat/api";
 import type { Chat, ChatMessage } from "@/chat/useChat";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
@@ -123,6 +123,8 @@ interface ChatPanelProps {
   /** Screen position of the text caret, so the eyes can follow what's typed. */
   onCaretMove?: (x: number, y: number) => void;
   onSend?: (text: string) => void;
+  /** Floats up the people a past recommendation named. */
+  onShowPeople?: (people: RecommendedPerson[]) => void;
 }
 
 let measureCtx: CanvasRenderingContext2D | null = null;
@@ -157,7 +159,12 @@ export function ChatPanel(props: ChatPanelProps) {
   );
 }
 
-function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
+function ChatPanelBody({
+  chat,
+  onCaretMove,
+  onSend,
+  onShowPeople,
+}: ChatPanelProps) {
   const {
     me,
     agent,
@@ -288,7 +295,10 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
                       <MessageScrollerItem key={m.key} messageId={m.key}>
                         <Arrival live={m.live} align="start">
                           <Message>
-                            <ToolCallMarker tool={m.tool} />
+                            <ToolCallMarker
+                              tool={m.tool}
+                              onShowPeople={onShowPeople}
+                            />
                           </Message>
                         </Arrival>
                       </MessageScrollerItem>

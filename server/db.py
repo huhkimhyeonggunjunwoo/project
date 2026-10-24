@@ -184,6 +184,22 @@ class Database:
         await self.conn.commit()
         return User(id=user_id, name=name)
 
+    async def user_by_name(self, name: str) -> User | None:
+        """Someone by name, ignoring case (names are unique that way)."""
+        async with self.conn.execute(
+            "SELECT id, name FROM users WHERE lower(name) = lower(?)", (name,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return User(id=row["id"], name=row["name"]) if row is not None else None
+
+    async def texts_by(self, user_id: str, limit: int) -> list[str]:
+        """The newest `limit` messages this user wrote, newest first."""
+        async with self.conn.execute(
+            "SELECT text FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT ?", (user_id, limit)
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [row["text"] for row in rows]
+
     async def achievements(self, user_id: str) -> list[str]:
         """Keys of the achievements this user has earned, oldest first."""
         async with self.conn.execute(

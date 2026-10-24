@@ -1,6 +1,7 @@
-import { ChevronDownIcon, CircleCheckIcon, CircleXIcon } from "lucide-react"
+import { ChevronDownIcon, CircleCheckIcon, CircleXIcon, SparklesIcon } from "lucide-react"
 
-import type { ToolCall } from "@/chat/api"
+import type { RecommendedPerson, ToolCall } from "@/chat/api"
+import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { MarkerContent, MarkerIcon, markerVariants } from "@/components/ui/marker"
 import { cn } from "@/lib/utils"
@@ -17,7 +18,14 @@ function hostname(url: string): string {
  * One thing the agent did, shown in the room as a status line: what happened,
  * and (on click) the exact input and result, plus any pages a search found.
  */
-export function ToolCallMarker({ tool }: { tool: ToolCall }) {
+export function ToolCallMarker({
+  tool,
+  onShowPeople,
+}: {
+  tool: ToolCall
+  /** For recommendations: floats up the people it named. */
+  onShowPeople?: (people: RecommendedPerson[]) => void
+}) {
   return (
     <Collapsible className="w-full">
       <CollapsibleTrigger
@@ -48,6 +56,14 @@ export function ToolCallMarker({ tool }: { tool: ToolCall }) {
             <dt className="font-medium text-muted-foreground">{tool.isError ? "Error" : "Result"}</dt>
             <dd className={cn(tool.isError && "text-destructive")}>{tool.output}</dd>
           </div>
+          {tool.people && tool.people.length > 0 && onShowPeople && (
+            <div>
+              <Button variant="secondary" size="xs" onClick={() => onShowPeople(tool.people!)}>
+                <SparklesIcon />
+                Show profiles
+              </Button>
+            </div>
+          )}
           {tool.results && tool.results.length > 0 && (
             <div className="grid gap-1">
               <dt className="font-medium text-muted-foreground">Sources</dt>

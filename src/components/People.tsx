@@ -35,7 +35,7 @@ function offlinePeople({ online, users }: PeopleProps): ChatUser[] {
   return users.filter((u) => !here.has(u.id))
 }
 
-function initials(name: string): string {
+export function initials(name: string): string {
   return name.replace(/^anon-/, "").slice(0, 2).toUpperCase()
 }
 

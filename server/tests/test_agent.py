@@ -248,6 +248,64 @@ def test_opened_links_are_posted() -> None:
     assert failed["output"] == "Couldn't open https://nope.example (url_not_accessible)"
 
 
+def test_recommendations_are_checked_and_filled_in(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        db = Database(tmp_path / "test.db")
+        await db.connect()
+        agent = Agent(db, Room(), name="one", model="test", context_messages=50)
+        await agent.start()
+        alice, _ = await db.create_user()
+        bob, _ = await db.create_user()
+        await db.add_message(bob, "I'm at github.com/bob, and https://bob.dev.")
+        minsu = await db.add_member("민수")
+        assert minsu is not None
+        agent.room.join(object(), bob)  # type: ignore[arg-type]
+        speakers = {alice.id: alice.name}
+
+        def person(name: str, links: list[str] | None = None) -> dict:
+            return {"name": name, "headline": "Builder", "reason": "You both like games.", "links": links or []}
+
+        async def recommend(for_name: str, *people: dict) -> tuple:
+            return await agent._recommend({"for_name": for_name, "people": list(people)}, speakers)
+
+        # Only for whoever just asked, and only real people other than them.
+        assert (await recommend(bob.name, person(alice.name)))[1] is True
+        assert (await recommend(alice.name, person("nobody"), person(alice.name), person("one")))[1] is True
+
+        output, is_error, extra = await recommend(
+            alice.name.upper(),
+            person(bob.name.upper(), ["https://bob.dev", "javascript:alert(1)", "https://x.com/bob"]),
+            person("nobody"),
+            person("민수"),
+            person(bob.name),
+        )
+        assert is_error is False
+        assert output == f"Recommended {bob.name}, 민수 to {alice.name}. Skipped nobody, {bob.name}: not someone else in the room."
+        assert extra["for"] == alice.id
+        assert extra["people"] == [
+            {
+                "id": bob.id,
+                "name": bob.name,
+                "headline": "Builder",
+                "reason": "You both like games.",
+                "links": ["https://github.com/bob", "https://bob.dev", "https://x.com/bob"],
+                "online": True,
+            },
+            {
+                "id": minsu.id,
+                "name": "민수",
+                "headline": "Builder",
+                "reason": "You both like games.",
+                "links": [],
+                "online": False,
+            },
+        ]
+        await agent.close()
+        await db.close()
+
+    asyncio.run(scenario())
+
+
 def test_request_offers_every_tool(monkeypatch: pytest.MonkeyPatch) -> None:
     """The real request (not a faked generate) names every tool."""
     sent: dict = {}
@@ -259,7 +317,13 @@ def test_request_offers_every_tool(monkeypatch: pytest.MonkeyPatch) -> None:
     agent = Agent(None, Room(), name="one", model="test", context_messages=50)  # type: ignore[arg-type]
     monkeypatch.setattr(agent.client.beta.messages, "create", create)
     asyncio.run(agent.generate([{"role": "user", "content": "anon-1a2b: hi"}]))
-    assert [t["name"] for t in sent["tools"]] == ["rename_user", "list_people", "web_search", "web_fetch"]
+    assert [t["name"] for t in sent["tools"]] == [
+        "rename_user",
+        "list_people",
+        "recommend_people",
+        "web_search",
+        "web_fetch",
+    ]
 
 
 
