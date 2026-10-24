@@ -140,17 +140,17 @@ function ChatPanelBody({ onCaretMove, onSend }: ChatPanelProps) {
         )}
 
         <form onSubmit={submit} className="pointer-events-auto mt-auto shrink-0">
-          <InputGroup className="h-12.5 rounded-full border-[3px] dark:bg-black">
+          <InputGroup className="h-10">
             <InputGroupInput
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onSelect={(e) => trackCaret(e.currentTarget)}
               onFocus={(e) => trackCaret(e.currentTarget)}
-              placeholder={connected ? "type something to ask..." : "connecting..."}
+              placeholder={connected ? "Ask something..." : "Connecting..."}
               aria-label="Message"
               autoComplete="off"
               maxLength={1000}
-              className="h-full pl-5 text-[15px] placeholder:text-neutral-600 md:text-[15px]"
+              className="pl-3"
             />
             <InputGroupAddon align="inline-end">
               <InputGroupButton
@@ -158,8 +158,9 @@ function ChatPanelBody({ onCaretMove, onSend }: ChatPanelProps) {
                 variant="default"
                 size="icon-sm"
                 aria-label="Send"
-                disabled={!connected}
-                className="size-8.5 rounded-full [&_svg:not([class*='size-'])]:size-4.5"
+                disabled={!connected || !draft.trim()}
+                // White button with a dark arrow, like my message bubbles.
+                className="[--primary:oklch(1_0_0)] [--primary-foreground:oklch(0.145_0_0)]"
               >
                 <ArrowRightIcon />
               </InputGroupButton>
