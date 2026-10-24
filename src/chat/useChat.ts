@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react"
 
 import {
-  fetchMessagesBefore,
+  fetchMessages,
   wsUrl,
   type AgentHints,
   type ChatUser,
@@ -12,6 +12,33 @@ import {
 } from "@/chat/api"
 
 const TOKEN_KEY = "onehouse.token"
+
+// A new key: the old "onehouse.hideOthers" was saved as off for everyone,
+// which would keep showing others now that hiding them is the default.
+const SHOW_OTHERS_KEY = "onehouse.showOthers"
+
+/**
+ * Whether to show everyone else's conversations too, remembered across
+ * visits. Off by default: I see my own conversation with the agent. This
+ * only changes what I see: the room stays public either way.
+ */
+function useShowOthers() {
+  const [show, setShow] = useState(() => {
+    try {
+      return localStorage.getItem(SHOW_OTHERS_KEY) === "1"
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem(SHOW_OTHERS_KEY, show ? "1" : "0")
+    } catch {
+      // Private mode etc.: it just isn't remembered.
+    }
+  }, [show])
+  return [show, setShow] as const
+}
 
 export type ConnectionStatus = "connecting" | "open" | "closed"
 
@@ -75,6 +102,7 @@ type Action =
   | { type: "received"; message: ServerMessage; clientId?: string }
   | { type: "pending"; message: ChatMessage }
   | { type: "older"; page: MessagePage }
+  | { type: "history"; page: MessagePage }
 
 const initialState: State = {
   me: null,
@@ -202,6 +230,16 @@ function reducer(state: State, action: Action): State {
     case "pending":
       return { ...state, messages: [...state.messages, action.message] }
 
+    case "history": {
+      // A fresh latest page (the other kind of history): start over from it,
+      // keeping anything that arrived since it was read.
+      const { stored, pending } = split(state.messages)
+      const page = action.page.messages.map((m) => fromServer(m))
+      const newest = page.at(-1)?.id ?? 0
+      const since = stored.filter((m) => m.id! > newest)
+      return { ...state, messages: [...mergeById(page, since), ...pending], hasMore: action.page.hasMore }
+    }
+
     case "older": {
       const { stored, pending } = split(state.messages)
       const page = action.page.messages.map((m) => fromServer(m))
@@ -244,6 +282,10 @@ function saveToken(token: string): void {
  */
 export function useChat() {
   const [state, dispatch] = useReducer(reducer, initialState)
+  const [showOthers, setShowOthersState] = useShowOthers()
+  const showOthersRef = useRef(showOthers)
+  // Bumped whenever history is reloaded, so pages asked for before that are dropped.
+  const historyRequest = useRef(0)
   const stateRef = useRef(state)
   const wsRef = useRef<WebSocket | null>(null)
   const loadingOlderRef = useRef(false)
@@ -251,6 +293,7 @@ export function useChat() {
 
   useLayoutEffect(() => {
     stateRef.current = state
+    showOthersRef.current = showOthers
   })
 
   useEffect(() => {
@@ -263,7 +306,11 @@ export function useChat() {
       const ws = new WebSocket(wsUrl("/ws"))
       wsRef.current = ws
 
-      ws.onopen = () => ws.send(JSON.stringify({ type: "hello", token: loadToken() }))
+      // With others hidden, the history that comes back is only my conversation.
+      ws.onopen = () =>
+        ws.send(
+          JSON.stringify({ type: "hello", token: loadToken(), history: showOthersRef.current ? undefined : "mine" })
+        )
 
       ws.onmessage = (e) => {
         let event: ServerEvent
@@ -355,14 +402,36 @@ export function useChat() {
     return true
   }, [])
 
+  /** Shows or hides everyone else's messages, reloading history to match. */
+  const setShowOthers = useCallback(
+    async (show: boolean) => {
+      setShowOthersState(show)
+      showOthersRef.current = show
+      const { me } = stateRef.current
+      if (!me) return
+      const request = ++historyRequest.current
+      try {
+        const page = await fetchMessages({ forUser: show ? undefined : me.id })
+        // Flipped again while this was loading: the newer request wins.
+        if (request === historyRequest.current) dispatch({ type: "history", page })
+      } catch (err) {
+        console.warn("[chat]", err)
+      }
+    },
+    [setShowOthersState]
+  )
+
   /** Loads the page just before the oldest message we have. */
   const loadOlder = useCallback(async () => {
-    const { messages, hasMore } = stateRef.current
+    const { messages, hasMore, me } = stateRef.current
     const oldest = messages.find((m) => m.id !== null)?.id
     if (loadingOlderRef.current || !hasMore || oldest == null) return
     loadingOlderRef.current = true
+    const request = historyRequest.current
     try {
-      dispatch({ type: "older", page: await fetchMessagesBefore(oldest) })
+      const page = await fetchMessages({ before: oldest, forUser: showOthersRef.current ? undefined : me?.id })
+      // History was reloaded meanwhile: this page belongs to the old one.
+      if (request === historyRequest.current) dispatch({ type: "older", page })
     } catch (err) {
       console.warn("[chat]", err)
     } finally {
@@ -373,7 +442,7 @@ export function useChat() {
   const { privates, ...rest } = state
   const messages = useMemo(() => withPrivates(state.messages, privates), [state.messages, privates])
 
-  return { ...rest, messages, send, loadOlder }
+  return { ...rest, messages, send, loadOlder, showOthers, setShowOthers }
 }
 
 export type Chat = ReturnType<typeof useChat>

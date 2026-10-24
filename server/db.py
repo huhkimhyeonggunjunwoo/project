@@ -200,15 +200,18 @@ class Database:
         assert row is not None
         return _message(row)
 
-    async def messages_before(self, before: int | None, limit: int) -> dict[str, Any]:
+    async def messages_before(self, before: int | None, limit: int, for_user: str | None = None) -> dict[str, Any]:
         """Newest `limit` messages older than `before` (or the newest overall),
-        returned oldest-first, plus whether anything older remains."""
+        returned oldest-first, plus whether anything older remains. With
+        `for_user`, only their own messages and the agent's replies to them."""
         async with self.conn.execute(
             f"SELECT {MESSAGE_COLUMNS}"
             " FROM messages m JOIN users u ON u.id = m.user_id"
             " WHERE (:before IS NULL OR m.id < :before)"
+            " AND (:user IS NULL OR m.user_id = :user"
+            "      OR EXISTS (SELECT 1 FROM json_each(m.reply_to) WHERE value = :user))"
             " ORDER BY m.id DESC LIMIT :limit",
-            {"before": before, "limit": limit + 1},
+            {"before": before, "user": for_user, "limit": limit + 1},
         ) as cursor:
             rows = await cursor.fetchall()
         has_more = len(rows) > limit

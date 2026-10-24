@@ -84,8 +84,18 @@ export type ServerEvent =
   | { type: "message"; message: ServerMessage; clientId?: string }
   | { type: "error"; message: string }
 
-export async function fetchMessagesBefore(before: number): Promise<MessagePage> {
-  const res = await fetch(apiUrl(`/messages?before=${before}`))
+/**
+ * A page of history: the newest messages, or those before `before`. With
+ * `forUser`, only their messages and the agent's replies to them.
+ */
+export async function fetchMessages({
+  before,
+  forUser,
+}: { before?: number; forUser?: string } = {}): Promise<MessagePage> {
+  const params = new URLSearchParams()
+  if (before !== undefined) params.set("before", String(before))
+  if (forUser !== undefined) params.set("for", forUser)
+  const res = await fetch(apiUrl(`/messages?${params}`))
   if (!res.ok) throw new Error(`Failed to load messages (${res.status})`)
   return res.json()
 }

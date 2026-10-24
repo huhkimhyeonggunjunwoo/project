@@ -163,3 +163,30 @@ def test_welcome_lists_everyone_who_ever_joined(client: TestClient) -> None:
     assert here["users"][0] == here["user"]  # most recently seen first
     assert gone in here["users"]
     assert all(u["id"] != "agent" for u in here["users"])
+
+
+def test_history_can_be_just_mine(client: TestClient) -> None:
+    import main
+    from db import User
+
+    async def seed() -> tuple[str, str]:
+        me, token = await main.db.create_user()
+        other, _ = await main.db.create_user()
+        agent = User(id="agent", name="one")
+        await main.db.add_message(other, "not mine")
+        await main.db.add_message(me, "mine")
+        await main.db.add_message(agent, "to me", reply_to=[me.id])
+        await main.db.add_message(agent, "to them", reply_to=[other.id])
+        await main.db.add_message(agent, "to both", reply_to=[other.id, me.id])
+        return me.id, token
+
+    me, token = client.portal.call(seed)  # type: ignore[union-attr]
+    texts = lambda page: [m["text"] for m in page["messages"]]  # noqa: E731
+    assert texts(client.get("/messages", params={"for": me}).json()) == ["mine", "to me", "to both"]
+    assert len(client.get("/messages").json()["messages"]) == 5
+    page = client.get("/messages", params={"for": me, "limit": 1, "before": 5}).json()
+    assert texts(page) == ["to me"] and page["hasMore"] is True
+
+    with client.websocket_connect("/ws", headers=ORIGIN) as ws:
+        ws.send_json({"type": "hello", "token": token, "history": "mine"})
+        assert texts(ws.receive_json()["history"]) == ["mine", "to me", "to both"]

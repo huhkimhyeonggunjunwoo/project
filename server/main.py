@@ -60,9 +60,12 @@ def read_root() -> dict[str, str]:
 async def list_messages(
     before: int | None = Query(None, ge=1, description="Return messages with an id lower than this"),
     limit: int | None = Query(None, ge=1, le=100),
+    for_user: str | None = Query(
+        None, alias="for", max_length=64, description="Only this user's messages and the agent's replies to them"
+    ),
 ) -> dict[str, Any]:
     """Chat history, newest first by page; each page is ordered oldest-first."""
-    return await db.messages_before(before, limit or settings.history_page_size)
+    return await db.messages_before(before, limit or settings.history_page_size, for_user)
 
 
 def _origin_allowed(origin: str | None) -> bool:
@@ -82,7 +85,8 @@ async def _receive(ws: WebSocket) -> dict[str, Any] | None:
 async def chat_socket(ws: WebSocket) -> None:
     """Protocol (JSON frames):
 
-    client → {"type": "hello", "token": "<saved token or null>"}   (first frame)
+    client → {"type": "hello", "token": "<saved token or null>", "history"?: "mine"}   (first frame;
+              "mine": the history in welcome is only my messages and the agent's replies to me)
     server → {"type": "welcome", "user": {...}, "token": "...", "history": {...},
               "online": [{...}], "users": [{...}], "agent": {...} | null, "agentTyping": bool,
               "agentReplyTo": ["<user id>", ...], "hints": {...} | null}
@@ -125,7 +129,8 @@ async def chat_socket(ws: WebSocket) -> None:
     # the client merges by message id.
     room.join(ws, user)
     try:
-        history = await db.messages_before(None, settings.history_page_size)
+        mine = hello.get("history") == "mine"
+        history = await db.messages_before(None, settings.history_page_size, user.id if mine else None)
         await ws.send_json(
             {
                 "type": "welcome",
