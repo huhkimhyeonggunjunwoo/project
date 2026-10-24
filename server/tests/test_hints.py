@@ -6,7 +6,6 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-import agent as agent_module
 from agent import Agent
 from db import Database
 from hints import ANGLES, parse, prompt
@@ -52,7 +51,6 @@ def test_hints_reach_only_the_people_answered(client: TestClient, monkeypatch: p
 
     monkeypatch.setattr(Agent, "generate", reply)
     monkeypatch.setattr(Agent, "write_hints", write_hints)
-    monkeypatch.setattr(agent_module, "PAUSE_BETWEEN_MESSAGES", 0)
 
     with client.websocket_connect("/ws", headers=ORIGIN) as a, client.websocket_connect("/ws", headers=ORIGIN) as b:
         first = hello(a)

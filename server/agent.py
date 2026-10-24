@@ -17,6 +17,7 @@ reply, the people it answered get a few suggested next messages (hints.py).
 import asyncio
 import json
 import logging
+import random
 import re
 import unicodedata
 from datetime import datetime, timezone
@@ -114,8 +115,8 @@ TOOL_RECORD = re.compile(r"<tool_record>.*?</tool_record>\s*", re.DOTALL)
 SENTENCE_END = re.compile(r"(?<=[.!?。！？])\s+")
 # Offered under the welcome notes, before anything else has been said.
 STARTER_HINT = "Find someone who's a good match for me"
-# Seconds between the messages of one reply, so they arrive one after another.
-PAUSE_BETWEEN_MESSAGES = 0.8
+# Longest wait before a message, however long it is (see Agent.typing_time).
+MAX_TYPING_SECONDS = 3.0
 
 
 def chat_messages(text: str) -> list[str]:
@@ -354,6 +355,12 @@ class Agent:
         notes[-1]["hints"] = [STARTER_HINT]
         return notes
 
+    def typing_time(self, text: str) -> float:
+        """Seconds to wait before sending `text` after another message, as if
+        a person were typing it: a moment to think, then typing at a speed
+        that varies each time, so the gaps never fall into a rhythm."""
+        return min(MAX_TYPING_SECONDS, random.uniform(0.3, 0.9) + len(text) / random.uniform(40, 70))
+
     async def start(self) -> None:
         await self.db.ensure_user(self.user)
 
@@ -451,7 +458,7 @@ class Agent:
             text = TOOL_RECORD.sub("", text).strip()
             for i, part in enumerate(chat_messages(text)):
                 if i:
-                    await asyncio.sleep(PAUSE_BETWEEN_MESSAGES)
+                    await asyncio.sleep(self.typing_time(part))
                 message = await self._post(part, context_id, reply_to)
                 self._answered = (message, dict(speakers))
 

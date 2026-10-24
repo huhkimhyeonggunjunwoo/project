@@ -8,12 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from agent import AGENT_ID, Agent
 from config import settings
-from db import Database
+from db import Database, User
 from room import Room, user_json
 
 HELLO_TIMEOUT_SECONDS = 10
-# Between the agent's welcome notes, so they arrive one after another.
-GREETING_PAUSE_SECONDS = 1.2
 
 db = Database(settings.database_file)
 room = Room()
@@ -70,12 +68,13 @@ async def list_messages(
     return await db.messages_before(before, limit or settings.history_page_size, for_user)
 
 
-async def _greet(ws: WebSocket, notes: list[dict[str, Any]]) -> None:
-    """Sends the welcome notes to one client, a moment apart."""
+async def _greet(ws: WebSocket, agent: Agent, user: User) -> None:
+    """Sends the welcome notes to one client, one after another, with the
+    pauses of someone typing them."""
     try:
-        for i, note in enumerate(notes):
+        for i, note in enumerate(agent.greeting(user)):
             if i:
-                await asyncio.sleep(GREETING_PAUSE_SECONDS)
+                await asyncio.sleep(agent.typing_time(note["text"]))
             await ws.send_json({"type": "private", "message": note})
     except Exception:
         pass  # They left before it was done.
@@ -162,7 +161,7 @@ async def chat_socket(ws: WebSocket) -> None:
             }
         )
         if agent is not None:
-            greeting = asyncio.create_task(_greet(ws, agent.greeting(user)))
+            greeting = asyncio.create_task(_greet(ws, agent, user))
         await room.sync_presence()
 
         while True:

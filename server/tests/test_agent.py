@@ -10,6 +10,9 @@ from db import Database
 from room import Room
 from test_chat import ORIGIN, client, hello, receive  # noqa: F401  (fixture)
 
+# The real one: tests send without pauses by default (see conftest.py).
+REAL_TYPING_TIME = Agent.typing_time
+
 
 def said(text: str) -> SimpleNamespace:
     """A fake model step that just replies."""
@@ -349,16 +352,27 @@ def test_replies_go_out_as_several_messages() -> None:
 
 
 def test_split_messages_arrive_in_a_row(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    import agent
-
     async def reply(self: Agent, messages: list) -> SimpleNamespace:
         return said("Hi!\n\nWhat's up?")
 
     monkeypatch.setattr(Agent, "generate", reply)
-    monkeypatch.setattr(agent, "PAUSE_BETWEEN_MESSAGES", 0)
     with client.websocket_connect("/ws", headers=ORIGIN) as ws:
         hello(ws)
         ws.send_json({"type": "send", "text": "yo"})
         receive(ws)
         assert receive(ws)["message"]["text"] == "Hi!"
         assert receive(ws)["message"]["text"] == "What's up?"
+
+
+def test_pauses_feel_typed() -> None:
+    from agent import MAX_TYPING_SECONDS
+
+    agent = Agent(None, Room(), name="one", model="test", context_messages=50)  # type: ignore[arg-type]
+    short = [REAL_TYPING_TIME(agent, "ok") for _ in range(50)]
+    longer = [REAL_TYPING_TIME(agent, "x" * 90) for _ in range(50)]
+    # Never instant, never dragging, and never the same rhythm twice.
+    assert all(0.3 <= t <= MAX_TYPING_SECONDS for t in short + longer)
+    assert len(set(short)) > 1
+    # Longer messages take longer to "type".
+    assert sum(longer) / len(longer) > sum(short) / len(short) + 0.8
+    assert REAL_TYPING_TIME(agent, "x" * 5000) == MAX_TYPING_SECONDS
