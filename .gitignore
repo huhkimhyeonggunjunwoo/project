@@ -1,0 +1,15 @@
+# Frontend
+node_modules/
+dist/
+*.local
+
+# Backend
+.venv/
+__pycache__/
+*.pyc
+
+# OS / editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
