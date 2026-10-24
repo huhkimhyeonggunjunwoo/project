@@ -61,10 +61,13 @@ export type ServerEvent =
       /** Everyone who has ever joined, most recently seen first. */
       users: ChatUser[]
       agent: ChatUser | null
+      /** Whether the agent is working on a reply right now. */
+      agentTyping: boolean
     }
   | { type: "presence"; users: ChatUser[] }
   | { type: "private"; message: PrivateMessage }
   | { type: "rename"; user: ChatUser }
+  | { type: "typing"; typing: boolean }
   | { type: "message"; message: ServerMessage; clientId?: string }
   | { type: "error"; message: string }
 

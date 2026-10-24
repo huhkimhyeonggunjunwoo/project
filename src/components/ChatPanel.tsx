@@ -20,6 +20,7 @@ import {
   useMessageScroller,
 } from "@/components/ui/message-scroller"
 import { ToolCallMarker } from "@/components/ToolCallMarker"
+import { TypingIndicator } from "@/components/TypingIndicator"
 import { cn } from "@/lib/utils"
 
 /** How close to the top (px) the history has to be before older pages load. */
@@ -62,7 +63,7 @@ export function ChatPanel(props: ChatPanelProps) {
 }
 
 function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
-  const { me, status, messages, hasMore, send, loadOlder } = chat
+  const { me, agent, agentTyping, status, messages, hasMore, send, loadOlder } = chat
   const [draft, setDraft] = useState("")
   const { scrollToEnd } = useMessageScroller()
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -70,6 +71,9 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
 
   // Jump to the newest message as soon as I send one, even if scrolled up.
   const lastMessage = messages[messages.length - 1]
+  // Name the typing bubble unless it directly follows the agent's own bubble.
+  const typingFollowsAgent =
+    lastMessage?.userId === agent?.id && !lastMessage?.private && !lastMessage?.tool
   useLayoutEffect(() => {
     if (lastMessage?.pending) scrollToEnd()
   }, [lastMessage, scrollToEnd])
@@ -155,6 +159,11 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
                     </MessageScrollerItem>
                   )
                 })}
+                {agentTyping && (
+                  <MessageScrollerItem key="agent-typing" messageId="agent-typing">
+                    <TypingIndicator name={typingFollowsAgent ? undefined : agent?.name} />
+                  </MessageScrollerItem>
+                )}
               </MessageScrollerContent>
             </MessageScrollerViewport>
             <MessageScrollerButton className="rounded-full" />

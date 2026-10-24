@@ -255,3 +255,27 @@ def test_request_offers_every_tool(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent.client.beta.messages, "create", create)
     asyncio.run(agent.generate([{"role": "user", "content": "anon-1a2b: hi"}]))
     assert [t["name"] for t in sent["tools"]] == ["rename_user", "web_search", "web_fetch"]
+
+
+
+def test_everyone_sees_the_agent_typing_until_it_answers(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def reply(self: Agent, messages: list) -> SimpleNamespace:
+        return said("hi!")
+
+    monkeypatch.setattr(Agent, "generate", reply)
+
+    with client.websocket_connect("/ws", headers=ORIGIN) as a, client.websocket_connect("/ws", headers=ORIGIN) as b:
+        assert hello(a)["agentTyping"] is False
+        hello(b)
+        a.send_json({"type": "send", "text": "hello?"})
+        for ws in (a, b):
+            seen = []
+            while not seen or seen[-1] != ("typing", False):
+                frame = ws.receive_json()
+                if frame["type"] == "typing":
+                    seen.append(("typing", frame["typing"]))
+                elif frame["type"] == "message":
+                    seen.append(("message", frame["message"]["text"]))
+            assert seen == [("message", "hello?"), ("typing", True), ("message", "hi!"), ("typing", False)]

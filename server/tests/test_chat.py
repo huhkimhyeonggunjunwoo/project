@@ -25,8 +25,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
 
 
 def receive(ws) -> dict:
-    """Next frame, skipping presence updates and private notes."""
-    while (frame := ws.receive_json())["type"] in ("presence", "private"):
+    """Next frame, skipping presence updates, private notes and typing signals."""
+    while (frame := ws.receive_json())["type"] in ("presence", "private", "typing"):
         pass
     return frame
 

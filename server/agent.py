@@ -207,6 +207,8 @@ class Agent:
         self.client = anthropic.AsyncAnthropic(api_key=api_key)
         self._task: asyncio.Task[None] | None = None
         self._dirty = False
+        # True from the moment someone speaks until the agent is done answering.
+        self.typing = False
 
     def greeting(self, user: User) -> dict[str, Any]:
         """A note only `user` sees when they connect. It isn't stored, so it
@@ -242,12 +244,21 @@ class Agent:
             self._task = asyncio.create_task(self._run())
 
     async def _run(self) -> None:
+        # The outer loop catches messages that arrive while "done typing" is
+        # being sent, so none slip through between two runs.
         while self._dirty:
-            self._dirty = False
-            try:
-                await self._reply()
-            except Exception:
-                log.exception("Agent reply failed")
+            await self._set_typing(True)
+            while self._dirty:
+                self._dirty = False
+                try:
+                    await self._reply()
+                except Exception:
+                    log.exception("Agent reply failed")
+            await self._set_typing(False)
+
+    async def _set_typing(self, typing: bool) -> None:
+        self.typing = typing
+        await self.room.broadcast({"type": "typing", "typing": typing})
 
     async def _reply(self) -> None:
         history = await self.db.recent_context(self.context_messages)
