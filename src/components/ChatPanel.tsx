@@ -272,7 +272,7 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
             <MessageScrollerViewport
               ref={viewportRef}
               onScroll={onHistoryScroll}
-              className="scroll-fade-18"
+              className="scroll-fade-18 scrollbar-none scrollbar-gutter-auto"
             >
               <MessageScrollerContent className="justify-end gap-2.5 px-1 pb-1">
                 {messages.map((m, i) => {
