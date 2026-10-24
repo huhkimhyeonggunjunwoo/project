@@ -8,6 +8,19 @@ export const easeInOutSine = (t: number): number => -(Math.cos(Math.PI * t) - 1)
 export const easeInOutCubic = (t: number): number =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
+function gradient(i: number): number {
+  const h = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+  return (h - Math.floor(h)) * 2 - 1;
+}
+
+/** Smooth 1D gradient noise, roughly -1..1. Never repeats, never jumps. */
+export function noise1D(x: number): number {
+  const i = Math.floor(x);
+  const f = x - i;
+  const u = f * f * f * (f * (f * 6 - 15) + 10);
+  return 2 * lerp(gradient(i) * f, gradient(i + 1) * (f - 1), u);
+}
+
 /** Damped spring on a single value. Lower damping ratio = more jelly. */
 export class Spring {
   value: number;

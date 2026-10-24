@@ -1,5 +1,5 @@
-import { TAU } from './math';
-import { boundsOf, parseCubicPath, sampleClosedPath, type Vec } from './path';
+import { lerp, noise1D, TAU } from './math';
+import { boundsOf, parseCubicPath, rayDistance, sampleClosedPath, type Vec } from './path';
 import type { EyeShape } from './shapes';
 
 /** Everything an eye needs to know about the current frame. */
@@ -16,7 +16,7 @@ export interface FrameState {
   squashY: number;
   /** 0 = open, 1 = closed. Small negative values open the eye a bit wider. */
   blink: number;
-  /** Multiplier for the idle wobble (lowered for reduced motion). */
+  /** Multiplier for the shape morphing (lowered for reduced motion). */
   wobble: number;
   /** Viewport placement: face center in px and px per reference unit. */
   cx: number;
@@ -26,13 +26,22 @@ export interface FrameState {
 
 const POINTS = 120;
 
+// The silhouette is a handful of control points joined by a smooth curve.
+// Fewer points = rounder, simpler blob.
+const KNOTS = 8;
+const ROUNDNESS = 0.12; // 0 = keep the reference silhouette, 1 = plain oval
+
+// Shape morphing: every control point keeps drifting in and out.
+const MORPH_IDLE = 0.3; // drift at rest (fraction of radius, before smoothing)
+const MORPH_MOVING = 0.18; // extra drift while the eyes are moving
+const MORPH_SPEED = 0.5; // how fast the control points wander
+const ASPECT_DRIFT = 0.05; // slow overall stretch, wider ↔ taller
+
 // Movement range of the gaze, in reference units.
 const SHIFT_X = 140;
 const SHIFT_Y = 85;
 
-// Blob feel.
-const WOBBLE_IDLE = 0.032; // radial wobble at rest (fraction of radius)
-const WOBBLE_MOVING = 0.05; // extra wobble while the eyes are moving
+// Jelly feel.
 const STRETCH_MAX = 0.24; // stretch along the direction of movement
 const LEAN = 0.14; // side facing the gaze bulges, far side shrinks
 const TURN_SQUASH = 0.12; // eye on the far side of a head turn narrows
@@ -47,13 +56,12 @@ const LID_LINE = 0.14; // where the lids meet, as a fraction of eye height below
 const CLOSED_THICKNESS = 0.07; // how thin the closed eye gets
 const CLOSED_ARC = 7; // closed lid curves down slightly in the middle (reference units)
 
-/** Smooth, looping noise along the outline (s in 0..1). Returns about -1..1. */
-function wobble(s: number, t: number, phase: number): number {
-  const a = TAU * s;
+/** Uniform cubic B-spline through four neighbouring values. Always smooth. */
+function bspline(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
   return (
-    0.5 * Math.sin(2 * a + t * 1.6 + phase) +
-    0.3 * Math.sin(3 * a - t * 1.15 + phase * 1.9) +
-    0.2 * Math.sin(5 * a + t * 2.1 + phase * 0.7)
+    ((1 - t) ** 3 * p0 + (3 * t3 - 6 * t2 + 4) * p1 + (-3 * t3 + 3 * t2 + 3 * t + 1) * p2 + t3 * p3) / 6
   );
 }
 
@@ -61,11 +69,16 @@ export class Eye {
   private readonly side: -1 | 1;
   private readonly phase: number;
 
-  // Resting outline, relative to the eye's own center.
-  private readonly baseX = new Float32Array(POINTS);
-  private readonly baseY = new Float32Array(POINTS);
-  private readonly radius: number;
+  // Silhouette in polar form, in a space where the eye's bounding box is a
+  // unit circle: one resting radius per control point, plus this frame's.
+  private readonly knots = new Float32Array(KNOTS);
+  private readonly radii = new Float32Array(KNOTS);
+  private readonly seeds = new Float32Array(KNOTS);
+  private readonly cos = new Float32Array(POINTS);
+  private readonly sin = new Float32Array(POINTS);
   private readonly halfWidth: number;
+  private readonly halfHeight: number;
+  private readonly radius: number;
   private readonly lidY: number;
 
   // Eye center relative to the face center (reference units).
@@ -94,27 +107,38 @@ export class Eye {
     this.side = shape.side;
     this.phase = phase;
 
-    const points = sampleClosedPath(parseCubicPath(shape.path), POINTS);
-    const { minX, minY, maxX, maxY } = boundsOf(points);
+    const outline = sampleClosedPath(parseCubicPath(shape.path), POINTS);
+    const { minX, minY, maxX, maxY } = boundsOf(outline);
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
+    this.halfWidth = (maxX - minX) / 2;
+    this.halfHeight = (maxY - minY) / 2;
+    this.radius = Math.max(this.halfWidth, this.halfHeight);
     this.offsetX = cx - faceCenter.x;
     this.offsetY = cy - faceCenter.y;
-    this.halfWidth = (maxX - minX) / 2;
-    this.lidY = (maxY - minY) * LID_LINE;
+    this.lidY = 2 * this.halfHeight * LID_LINE;
 
-    let radius = 0;
-    points.forEach((p, i) => {
-      this.baseX[i] = p.x - cx;
-      this.baseY[i] = p.y - cy;
-      radius = Math.max(radius, Math.hypot(this.baseX[i], this.baseY[i]));
+    // Read the reference silhouette at each control point, then soften it.
+    const unit = outline.map((p) => ({ x: (p.x - cx) / this.halfWidth, y: (p.y - cy) / this.halfHeight }));
+    let mean = 0;
+    for (let k = 0; k < KNOTS; k++) {
+      this.knots[k] = rayDistance(unit, (TAU * k) / KNOTS);
+      mean += this.knots[k] / KNOTS;
+    }
+    for (let k = 0; k < KNOTS; k++) {
+      this.knots[k] = lerp(this.knots[k], mean, ROUNDNESS);
+      this.seeds[k] = phase * 37.3 + k * 13.71;
+    }
 
-      const s = i / POINTS;
-      const k = POINT_STIFFNESS * (1 + 0.16 * Math.sin(TAU * 2 * s + phase));
+    for (let i = 0; i < POINTS; i++) {
+      const a = (TAU * i) / POINTS;
+      this.cos[i] = Math.cos(a);
+      this.sin[i] = Math.sin(a);
+
+      const k = POINT_STIFFNESS * (1 + 0.16 * Math.sin(2 * a + phase));
       this.stiffness[i] = k;
       this.damping[i] = 2 * POINT_DAMPING_RATIO * Math.sqrt(k);
-    });
-    this.radius = radius;
+    }
   }
 
   /** Jump straight to the target shape (e.g. after a resize). */
@@ -165,6 +189,30 @@ export class Eye {
     ctx.fill();
   }
 
+  /** Lets every control point drift on its own smooth noise. */
+  private morph(time: number, amount: number): void {
+    const t = time * MORPH_SPEED;
+    for (let k = 0; k < KNOTS; k++) {
+      const seed = this.seeds[k];
+      const n = 0.7 * noise1D(t + seed) + 0.3 * noise1D(t * 2.3 + seed * 1.31 + 71.3);
+      this.radii[k] = this.knots[k] * (1 + amount * n);
+    }
+  }
+
+  /** Radius of the blob at outline point i, smoothed across control points. */
+  private radiusAt(i: number): number {
+    const u = (i * KNOTS) / POINTS;
+    const k = Math.floor(u);
+    const r = this.radii;
+    return bspline(
+      r[(k - 1 + KNOTS) % KNOTS],
+      r[k % KNOTS],
+      r[(k + 1) % KNOTS],
+      r[(k + 2) % KNOTS],
+      u - k,
+    );
+  }
+
   private computeTargets(f: FrameState): void {
     const gx = f.gazeX;
     const gy = f.gazeY;
@@ -180,11 +228,13 @@ export class Eye {
     const velDirX = speed > 1e-3 ? velX / speed : 1;
     const velDirY = speed > 1e-3 ? velY / speed : 0;
 
-    const amp = f.wobble * (WOBBLE_IDLE + WOBBLE_MOVING * Math.tanh(speed / 1500));
+    this.morph(f.time, f.wobble * (MORPH_IDLE + MORPH_MOVING * Math.tanh(speed / 1500)));
+
+    const aspect = f.wobble * ASPECT_DRIFT * noise1D(f.time * 0.35 + this.phase * 5.1);
     const breathe = 1 + 0.012 * Math.sin(f.time * 1.4 + this.phase);
     const turn = 1 - TURN_SQUASH * Math.max(0, gx * this.side);
-    const scaleX = breathe * f.squashX * turn;
-    const scaleY = breathe * f.squashY;
+    const scaleX = this.halfWidth * (1 + aspect) * breathe * f.squashX * turn;
+    const scaleY = this.halfHeight * (1 - aspect) * breathe * f.squashY;
 
     // Eyes drift a little closer together when the head turns.
     const centerX = f.cx + (this.offsetX * (1 - 0.05 * Math.abs(gx)) + gx * SHIFT_X) * f.scale;
@@ -193,9 +243,9 @@ export class Eye {
     this.centerY = centerY;
 
     for (let i = 0; i < POINTS; i++) {
-      const w = 1 + amp * wobble(i / POINTS, f.time, this.phase);
-      let x = this.baseX[i] * w * scaleX;
-      let y = this.baseY[i] * w * scaleY;
+      const r = this.radiusAt(i);
+      let x = this.cos[i] * r * scaleX;
+      let y = this.sin[i] * r * scaleY;
 
       if (lean > 0) {
         const k = 1 + lean * (x * gazeDirX + y * gazeDirY);

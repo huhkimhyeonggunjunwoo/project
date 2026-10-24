@@ -74,6 +74,25 @@ export function boundsOf(points: Vec[]): Bounds {
   return b;
 }
 
+/** Distance from the origin to the far edge of a closed polygon along `angle`. */
+export function rayDistance(points: Vec[], angle: number): number {
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  let best = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const ex = b.x - a.x;
+    const ey = b.y - a.y;
+    const den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = (a.x * ey - a.y * ex) / den;
+    const s = (a.x * dy - a.y * dx) / den;
+    if (t > 0 && s >= 0 && s <= 1) best = Math.max(best, t);
+  }
+  return best;
+}
+
 /** Resamples a closed path into `count` points spaced evenly by arc length. */
 export function sampleClosedPath(segments: Cubic[], count: number): Vec[] {
   const STEPS = 64;

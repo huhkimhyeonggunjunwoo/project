@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "uv run --directory server fastapi dev main.py"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

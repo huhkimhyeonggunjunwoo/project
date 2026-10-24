@@ -1,7 +1,10 @@
 /**
- * Resting eye shapes, traced from the reference design (a 1458×936 frame).
- * Coordinates are in that frame's units; the renderer rescales them to fit
- * the viewport, so these can be swapped for paths exported from Figma.
+ * Starting silhouettes for the eyes, traced from the reference design
+ * (a 1458×936 frame). The eye reads this outline at a few control points,
+ * rounds it off, and then keeps those points drifting — so this sets the
+ * overall size, placement and character, not the exact on-screen shape.
+ * Coordinates are in the reference frame's units and are rescaled to fit
+ * the viewport, so they can be swapped for paths exported from Figma.
  */
 export const REFERENCE_FRAME = { width: 1458, height: 936 };
 
