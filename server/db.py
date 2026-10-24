@@ -186,6 +186,17 @@ class Database:
         messages.reverse()
         return {"messages": messages, "hasMore": has_more}
 
+    async def messages_after(self, after: int, limit: int) -> list[dict[str, Any]]:
+        """The oldest `limit` messages newer than `after`, oldest first."""
+        async with self.conn.execute(
+            f"SELECT {MESSAGE_COLUMNS}"
+            " FROM messages m JOIN users u ON u.id = m.user_id"
+            " WHERE m.id > ? ORDER BY m.id LIMIT ?",
+            (after, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [_message(row) for row in rows]
+
     async def recent_context(self, limit: int) -> list[dict[str, Any]]:
         """The newest `limit` messages, oldest first, with each agent reply's
         context_id (what the agent had read when it wrote it)."""

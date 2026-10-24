@@ -37,9 +37,24 @@ class Settings(BaseSettings):
     # How many of the latest room messages the agent reads before replying.
     agent_context_messages: int = 50
 
+    # The agent's memory: a wiki it compiles from the room (see memory.py).
+    memory_path: Path = Path("data/wiki")
+    # Compile new messages into it once this many have piled up. Keep it below
+    # agent_context_messages, so messages reach memory before leaving context.
+    memory_ingest_every: int = 30
+    # Check the whole wiki every this many ingests (0 = never).
+    memory_lint_every: int = 10
+
     @property
     def database_file(self) -> Path:
-        path = self.database_path
+        return self._resolve(self.database_path)
+
+    @property
+    def memory_dir(self) -> Path:
+        return self._resolve(self.memory_path)
+
+    @staticmethod
+    def _resolve(path: Path) -> Path:
         return path if path.is_absolute() else BASE_DIR / path
 
 

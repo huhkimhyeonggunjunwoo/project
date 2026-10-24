@@ -29,6 +29,9 @@ async def lifespan(_: FastAPI):
         model=settings.agent_model,
         context_messages=settings.agent_context_messages,
         api_key=settings.anthropic_api_key,
+        memory_dir=settings.memory_dir,
+        ingest_every=settings.memory_ingest_every,
+        lint_every=settings.memory_lint_every,
     )
     await agent.start()
     yield

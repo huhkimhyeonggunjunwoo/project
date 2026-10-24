@@ -18,6 +18,7 @@ async def silent(self: Agent, turns: list) -> None:
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setattr(main, "db", Database(tmp_path / "test.db"))
+    monkeypatch.setattr(main.settings, "memory_path", tmp_path / "wiki")
     # Never call Claude in tests; tests that want replies swap this out.
     monkeypatch.setattr(Agent, "generate", silent)
     with TestClient(main.app) as c:
