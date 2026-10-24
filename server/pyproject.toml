@@ -3,5 +3,15 @@ name = "one-house-server"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
+    "aiosqlite>=0.22.1",
     "fastapi[standard]>=0.115",
+    "pydantic-settings>=2.15.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

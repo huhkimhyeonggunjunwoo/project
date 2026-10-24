@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "server": "uv run --directory server fastapi dev main.py"
+    "server": "uv run --directory server fastapi dev main.py",
+    "server:prod": "uv run --directory server --env-file .env.production fastapi run main.py",
+    "test:server": "uv run --directory server pytest"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

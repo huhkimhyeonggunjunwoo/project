@@ -1,7 +1,18 @@
 import { fileURLToPath, URL } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type ProxyOptions } from 'vite';
+
+// Forward /api/* (HTTP and WebSocket) to the FastAPI server, for both
+// `npm run dev` and `npm run preview`.
+const apiProxy: Record<string, ProxyOptions> = {
+  '/api': {
+    target: 'http://127.0.0.1:8000',
+    changeOrigin: true,
+    ws: true,
+    rewrite: (path) => path.replace(/^\/api/, ''),
+  },
+};
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -12,13 +23,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    // Forward /api/* to the FastAPI server during development.
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-    },
+    proxy: apiProxy,
+  },
+  preview: {
+    proxy: apiProxy,
   },
 });

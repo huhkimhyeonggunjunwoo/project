@@ -1,6 +1,7 @@
-import { useLayoutEffect, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react"
 import { ArrowRightIcon } from "lucide-react"
 
+import { useChat } from "@/chat/useChat"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import {
   InputGroup,
@@ -8,7 +9,7 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group"
-import { Message, MessageContent } from "@/components/ui/message"
+import { Message, MessageContent, MessageHeader } from "@/components/ui/message"
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -18,12 +19,10 @@ import {
   MessageScrollerViewport,
   useMessageScroller,
 } from "@/components/ui/message-scroller"
+import { cn } from "@/lib/utils"
 
-export interface ChatMessage {
-  id: string
-  role: "user" | "agent"
-  text: string
-}
+/** How close to the top (px) the history has to be before older pages load. */
+const LOAD_OLDER_THRESHOLD = 48
 
 interface ChatPanelProps {
   /** Screen position of the text caret, so the eyes can follow what's typed. */
@@ -47,9 +46,9 @@ function caretPoint(input: HTMLInputElement): { x: number; y: number } {
 }
 
 /**
- * Chat overlay pinned to the bottom center. Past messages stack above the
- * input, stay below the eyes, and fade out at the top when there's more to
- * scroll back to.
+ * Open chat overlay pinned to the bottom center: one room shared by everyone.
+ * Past messages stack above the input, stay below the eyes, fade out at the
+ * top when there's more to scroll back to, and older pages load on scroll.
  */
 export function ChatPanel(props: ChatPanelProps) {
   return (
@@ -60,16 +59,33 @@ export function ChatPanel(props: ChatPanelProps) {
 }
 
 function ChatPanelBody({ onCaretMove, onSend }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const { me, status, messages, hasMore, send, loadOlder } = useChat()
   const [draft, setDraft] = useState("")
-  const nextId = useRef(0)
   const { scrollToEnd } = useMessageScroller()
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const connected = status === "open"
 
-  // Jump to the newest message as soon as it's sent, even if scrolled up.
+  // Jump to the newest message as soon as I send one, even if scrolled up.
   const lastMessage = messages[messages.length - 1]
   useLayoutEffect(() => {
-    if (lastMessage?.role === "user") scrollToEnd()
+    if (lastMessage?.pending) scrollToEnd()
   }, [lastMessage, scrollToEnd])
+
+  // Scrolled near the top of the history: load the page before it.
+  const onHistoryScroll = useCallback(() => {
+    const viewport = viewportRef.current
+    if (viewport && viewport.scrollTop < LOAD_OLDER_THRESHOLD) void loadOlder()
+  }, [loadOlder])
+
+  // History doesn't fill the area yet (so it can't be scrolled): load more.
+  useEffect(() => {
+    if (!hasMore) return
+    const frame = requestAnimationFrame(() => {
+      const viewport = viewportRef.current
+      if (viewport && viewport.scrollHeight <= viewport.clientHeight) void loadOlder()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [hasMore, messages.length, loadOlder])
 
   const trackCaret = (input: HTMLInputElement) => {
     if (!onCaretMove) return
@@ -80,8 +96,7 @@ function ChatPanelBody({ onCaretMove, onSend }: ChatPanelProps) {
   const submit = (e: FormEvent) => {
     e.preventDefault()
     const text = draft.trim()
-    if (!text) return
-    setMessages((prev) => [...prev, { id: `m${nextId.current++}`, role: "user", text }])
+    if (!text || !send(text)) return
     setDraft("")
     onSend?.(text)
   }
@@ -91,25 +106,33 @@ function ChatPanelBody({ onCaretMove, onSend }: ChatPanelProps) {
       <div className="flex min-h-0 w-full max-w-137 flex-col gap-3">
         {messages.length > 0 && (
           <MessageScroller className="pointer-events-auto flex-1">
-            <MessageScrollerViewport className="scroll-fade-18">
+            <MessageScrollerViewport ref={viewportRef} onScroll={onHistoryScroll} className="scroll-fade-18">
               <MessageScrollerContent className="justify-end gap-2.5 px-1 pb-1">
-                {messages.map((m) => (
-                  <MessageScrollerItem key={m.id} messageId={m.id}>
-                    <Message align={m.role === "user" ? "end" : "start"}>
-                      <MessageContent>
-                        <Bubble
-                          variant={m.role === "user" ? "default" : "ghost"}
-                          // My messages: white bubble with dark text.
-                          className="[--primary:oklch(1_0_0)] [--primary-foreground:oklch(0.145_0_0)]"
-                        >
-                          <BubbleContent className="rounded-2xl px-4 py-2 text-[15px]">
-                            {m.text}
-                          </BubbleContent>
-                        </Bubble>
-                      </MessageContent>
-                    </Message>
-                  </MessageScrollerItem>
-                ))}
+                {messages.map((m, i) => {
+                  const mine = m.userId === me?.id
+                  const showName = !mine && messages[i - 1]?.userId !== m.userId
+                  return (
+                    <MessageScrollerItem key={m.key} messageId={m.key}>
+                      <Message align={mine ? "end" : "start"}>
+                        <MessageContent className="gap-1">
+                          {showName && <MessageHeader>{m.userName}</MessageHeader>}
+                          <Bubble
+                            variant={mine ? "default" : "secondary"}
+                            className={cn(
+                              // My messages: white bubble with dark text.
+                              mine && "[--primary:oklch(1_0_0)] [--primary-foreground:oklch(0.145_0_0)]",
+                              m.pending && "opacity-60"
+                            )}
+                          >
+                            <BubbleContent className="rounded-2xl px-4 py-2 text-[15px]">
+                              {m.text}
+                            </BubbleContent>
+                          </Bubble>
+                        </MessageContent>
+                      </Message>
+                    </MessageScrollerItem>
+                  )
+                })}
               </MessageScrollerContent>
             </MessageScrollerViewport>
             <MessageScrollerButton className="rounded-full" />
@@ -123,10 +146,11 @@ function ChatPanelBody({ onCaretMove, onSend }: ChatPanelProps) {
               onChange={(e) => setDraft(e.target.value)}
               onSelect={(e) => trackCaret(e.currentTarget)}
               onFocus={(e) => trackCaret(e.currentTarget)}
-              placeholder="type something to ask..."
+              placeholder={connected ? "type something to ask..." : "connecting..."}
               aria-label="Message"
               autoComplete="off"
-              className="h-full pl-5 text-[15px] md:text-[15px] placeholder:text-neutral-600"
+              maxLength={1000}
+              className="h-full pl-5 text-[15px] placeholder:text-neutral-600 md:text-[15px]"
             />
             <InputGroupAddon align="inline-end">
               <InputGroupButton
@@ -134,6 +158,7 @@ function ChatPanelBody({ onCaretMove, onSend }: ChatPanelProps) {
                 variant="default"
                 size="icon-sm"
                 aria-label="Send"
+                disabled={!connected}
                 className="size-8.5 rounded-full [&_svg:not([class*='size-'])]:size-4.5"
               >
                 <ArrowRightIcon />
