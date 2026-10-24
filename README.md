@@ -1,6 +1,6 @@
 # One House
 
-**One open chat room. One AI agent that talks to everyone in it.**
+**One chat room. One AI agent that talks to everyone in it.**
 
 One House is a single shared chat room where every visitor talks to the same AI character, **one**. It isn't a personal assistant: it reads the whole room as one conversation, answers several people at once, remembers who they are, and helps them find people they'd click with.
 
@@ -24,7 +24,7 @@ One House is a single shared chat room where every visitor talks to the same AI 
 
 - No sign-up. Your first visit creates an anonymous user (like `anon-b030`) and a token that the browser keeps in `localStorage`. The server only stores a hash of it, so coming back on the same browser makes you the same person.
 - **one** greets you with a few private welcome notes, sent a moment apart as if typed. They are shown only to you and never stored.
-- The last note comes with starter buttons such as *"Find someone who's a good match for me"* and *"I want to change my name"*.
+- The last note comes with starter buttons such as _"Find someone who's a good match for me"_ and _"I want to change my name"_.
 
 ### The room
 
@@ -45,13 +45,13 @@ One House is a single shared chat room where every visitor talks to the same AI 
 
 Every tool call is posted to the room as a status line, so everyone can see what the agent did. Clicking it expands the exact input, the result, and any pages a search found.
 
-| Tool | What it does |
-| --- | --- |
-| `web_search` | Searches the web (run by Anthropic, server-side). |
-| `web_fetch` | Opens a link that someone sent or a search found. |
-| `rename_user` | Renames a person, only when that person asks for it themselves. Names are unique, one line, at most 24 characters. |
+| Tool          | What it does                                                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `web_search`  | Searches the web (run by Anthropic, server-side).                                                                     |
+| `web_fetch`   | Opens a link that someone sent or a search found.                                                                     |
+| `rename_user` | Renames a person, only when that person asks for it themselves. Names are unique, one line, at most 24 characters.    |
 | `list_people` | Lists everyone who has ever been in the room: online, offline (with last seen date), and people added from documents. |
-| `read_notes` | Opens a page of the agent's long-term memory. |
+| `read_notes`  | Opens a page of the agent's long-term memory.                                                                         |
 
 A reply is limited to 6 model steps, so a confused tool loop can't run forever.
 
@@ -151,18 +151,18 @@ Open http://localhost:5173. The dev server proxies `/api` (HTTP and WebSocket) t
 
 ## Scripts
 
-| Command | Description |
-| --- | --- |
-| `npm run dev` | Start the Vite dev server. |
-| `npm run build` | Type-check and build the client into `dist/`. |
-| `npm run preview` | Serve the built client, with the same `/api` proxy. |
-| `npm run share:web` | Build and serve the client on `127.0.0.1:4180`. |
-| `npm run share:tunnel` | Expose the API on `:8000` through the `onehouse` Cloudflare tunnel. |
-| `npm run server` | Run the API server in development mode with reload. |
-| `npm run server:prod` | Run the API server with `server/.env.production`. |
-| `npm run server:reset` | Delete the database and memory for the current `APP_ENV`. Production asks for confirmation. |
-| `npm run server:add-source -- <file>` | Add a document to the agent's memory. |
-| `npm run test:server` | Run the server tests with pytest. |
+| Command                               | Description                                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `npm run dev`                         | Start the Vite dev server.                                                                  |
+| `npm run build`                       | Type-check and build the client into `dist/`.                                               |
+| `npm run preview`                     | Serve the built client, with the same `/api` proxy.                                         |
+| `npm run share:web`                   | Build and serve the client on `127.0.0.1:4180`.                                             |
+| `npm run share:tunnel`                | Expose the API on `:8000` through the `onehouse` Cloudflare tunnel.                         |
+| `npm run server`                      | Run the API server in development mode with reload.                                         |
+| `npm run server:prod`                 | Run the API server with `server/.env.production`.                                           |
+| `npm run server:reset`                | Delete the database and memory for the current `APP_ENV`. Production asks for confirmation. |
+| `npm run server:add-source -- <file>` | Add a document to the agent's memory.                                                       |
+| `npm run test:server`                 | Run the server tests with pytest.                                                           |
 
 ### Adding documents to memory
 
@@ -181,29 +181,29 @@ npm run server:add-source -- --again discord-day-1
 
 `APP_ENV` picks the server's env file: `server/.env.development` (default) or `server/.env.production`. A matching `.env.<APP_ENV>.local` file overrides it and is git-ignored. Real environment variables override both.
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `ANTHROPIC_API_KEY` | | Claude API key. Unset means the SDK's own lookup. |
-| `DATABASE_PATH` | `data/app.db` | SQLite file, relative to `server/`. |
-| `CORS_ORIGINS` | `[]` | Allowed browser origins for HTTP and the WebSocket. Empty allows any. |
-| `HISTORY_PAGE_SIZE` | `30` | Messages per history page. |
-| `MAX_MESSAGE_LENGTH` | `1000` | Longest message a user can send. |
-| `AGENT_NAME` | `one` | The agent's name in the room. |
-| `AGENT_MODEL` | `claude-sonnet-5-5` | Model for replies, memory and hints. |
-| `AGENT_CONTEXT_MESSAGES` | `50` | How many recent messages the agent reads. |
-| `MEMORY_PATH` | `data/wiki` | Where the memory wiki lives, relative to `server/`. |
-| `MEMORY_INGEST_EVERY` | `30` | Compile new messages into memory once this many pile up. Keep it below `AGENT_CONTEXT_MESSAGES`. |
-| `MEMORY_LINT_EVERY` | `10` | Tidy the whole wiki every this many ingests. `0` disables it. |
+| Variable                 | Default             | Description                                                                                      |
+| ------------------------ | ------------------- | ------------------------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY`      |                     | Claude API key. Unset means the SDK's own lookup.                                                |
+| `DATABASE_PATH`          | `data/app.db`       | SQLite file, relative to `server/`.                                                              |
+| `CORS_ORIGINS`           | `[]`                | Allowed browser origins for HTTP and the WebSocket. Empty allows any.                            |
+| `HISTORY_PAGE_SIZE`      | `30`                | Messages per history page.                                                                       |
+| `MAX_MESSAGE_LENGTH`     | `1000`              | Longest message a user can send.                                                                 |
+| `AGENT_NAME`             | `one`               | The agent's name in the room.                                                                    |
+| `AGENT_MODEL`            | `claude-sonnet-5-5` | Model for replies, memory and hints.                                                             |
+| `AGENT_CONTEXT_MESSAGES` | `50`                | How many recent messages the agent reads.                                                        |
+| `MEMORY_PATH`            | `data/wiki`         | Where the memory wiki lives, relative to `server/`.                                              |
+| `MEMORY_INGEST_EVERY`    | `30`                | Compile new messages into memory once this many pile up. Keep it below `AGENT_CONTEXT_MESSAGES`. |
+| `MEMORY_LINT_EVERY`      | `10`                | Tidy the whole wiki every this many ingests. `0` disables it.                                    |
 
 The client reads `VITE_API_URL` from `.env.development` (`/api`, proxied) or `.env.production` (the deployed API URL). When the API runs on another host, add the client's origin to `CORS_ORIGINS`.
 
 ## API
 
-| Endpoint | Description |
-| --- | --- |
-| `GET /` | Health check. |
+| Endpoint                            | Description                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| `GET /`                             | Health check.                                                                              |
 | `GET /messages?before=&limit=&for=` | A page of history. `for` limits it to one user's messages and the agent's replies to them. |
-| `WS /ws` | The chat protocol. |
+| `WS /ws`                            | The chat protocol.                                                                         |
 
 The WebSocket speaks JSON frames. The client opens with `hello` (its saved token, if any) and gets a `welcome` with its user, token, history, presence and the agent's state. After that the client sends `send` frames, and the server pushes `message`, `private`, `typing`, `presence`, `rename`, `hints` and `error` events. The full protocol is documented in [server/main.py](server/main.py).
 
