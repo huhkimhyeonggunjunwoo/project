@@ -19,3 +19,5 @@ server/data/
 *.db
 *.db-shm
 *.db-wal
+
+temp/*
