@@ -120,6 +120,17 @@ class Database:
         )
         await self.conn.commit()
 
+    async def add_member(self, name: str) -> User | None:
+        """Adds someone who can't log in, like a person from a document the
+        agent was given, so they're listed with everyone else. Returns None
+        if the name is taken (ignoring case)."""
+        async with self.conn.execute("SELECT 1 FROM users WHERE lower(name) = lower(?)", (name,)) as cursor:
+            if await cursor.fetchone() is not None:
+                return None
+        user = User(id=uuid.uuid4().hex, name=name)
+        await self.ensure_user(user)
+        return user
+
     async def user_by_token(self, token: str) -> User | None:
         token_hash = _hash_token(token)
         async with self.conn.execute(
@@ -139,6 +150,20 @@ class Database:
         ) as cursor:
             rows = await cursor.fetchall()
         return [User(id=row["id"], name=row["name"]) for row in rows]
+
+    async def people(self, exclude: str, limit: int) -> list[dict[str, Any]]:
+        """Everyone who has ever joined, most recently seen first, and whether
+        they're a login-less member (see add_member)."""
+        async with self.conn.execute(
+            "SELECT id, name, last_seen_at, token_hash LIKE '!%' AS member FROM users"
+            " WHERE id != ? ORDER BY last_seen_at DESC, id LIMIT ?",
+            (exclude, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [
+            {"id": row["id"], "name": row["name"], "lastSeenAt": row["last_seen_at"], "member": bool(row["member"])}
+            for row in rows
+        ]
 
     async def rename_user(self, user_id: str, name: str) -> User | None:
         """Renames a user, or returns None if someone else already has that

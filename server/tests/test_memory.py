@@ -192,3 +192,65 @@ def test_request_shows_the_notes_index(tmp_path: Path, monkeypatch: pytest.Monke
     agent.memory.wiki.write("index", "- [[jun]]: Jun")
     asyncio.run(agent.generate(turns))  # type: ignore[arg-type]
     assert sent["system"].endswith("<notes_index>\n- [[jun]]: Jun\n</notes_index>")
+
+
+def test_sources_are_kept_once_and_compiled_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    memory = Memory(Wiki(tmp_path / "wiki"), None, name="one", agent_id=AGENT_ID,  # type: ignore[arg-type]
+                    model="test", ingest_every=30, lint_every=10)
+    tasks: list[str] = []
+
+    async def compile(task: str) -> str | None:
+        tasks.append(task)
+        return "Added a page for the hackathon."
+
+    monkeypatch.setattr(memory, "_compile", compile)
+    assert asyncio.run(memory.ingest_source("discord-day-1", "민수: 주제 제출 확인 방법?")) is not None
+
+    assert (tmp_path / "wiki" / "raw" / "discord-day-1.md").read_text() == "민수: 주제 제출 확인 방법?"
+    assert "<source>\n민수: 주제 제출 확인 방법?\n</source>" in tasks[0]
+    assert "source discord-day-1\nAdded a page for the hackathon." in (memory.wiki.read("log") or "")
+    # Room messages are still read from where they left off.
+    assert memory.wiki.state == {"readUpTo": 0, "ingests": 0}
+    # Sources never change.
+    with pytest.raises(ValueError):
+        asyncio.run(memory.ingest_source("discord-day-1", "rewritten"))
+    with pytest.raises(ValueError):
+        asyncio.run(memory.ingest_source("../escape", "nope"))
+
+
+def test_members_from_a_source_are_listed_but_cant_log_in(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        db = Database(tmp_path / "test.db")
+        await db.connect()
+        me, _ = await db.create_user()
+        member = await db.add_member("민수")
+        assert member is not None
+        assert await db.add_member("민수") is None  # taken
+        assert await db.add_member(me.name.upper()) is None
+        assert {u.name for u in await db.list_users(exclude=AGENT_ID)} == {"민수", me.name}
+        assert await db.user_by_token(f"!{member.id}") is None
+        await db.close()
+
+    asyncio.run(scenario())
+
+
+def test_sources_can_be_compiled_again_and_read_while_compiling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    memory = Memory(Wiki(tmp_path / "wiki"), None, name="one", agent_id=AGENT_ID,  # type: ignore[arg-type]
+                    model="test", ingest_every=30, lint_every=10)
+    tasks: list[str] = []
+
+    async def compile(task: str) -> str | None:
+        tasks.append(task)
+        return "ok"
+
+    monkeypatch.setattr(memory, "_compile", compile)
+    asyncio.run(memory.ingest_source("day-1", "민수: NERO 팀입니다"))
+    asyncio.run(memory.ingest_source("day-1"))
+
+    assert "<source>\n민수: NERO 팀입니다\n</source>" in tasks[1]
+    assert "Sources: day-1" in tasks[1]
+    assert "source day-1 (again)\nok" in (memory.wiki.read("log") or "")
+    assert memory._run_tool("read_source", {"name": "day-1"}) == ("민수: NERO 팀입니다", False)
+    assert memory._run_tool("read_source", {"name": "day-2"})[1] is True
+    with pytest.raises(ValueError):
+        asyncio.run(memory.ingest_source("day-2"))

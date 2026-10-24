@@ -246,7 +246,7 @@ def test_opened_links_are_posted() -> None:
 
 
 def test_request_offers_every_tool(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The real request (not a faked generate) names all three tools."""
+    """The real request (not a faked generate) names every tool."""
     sent: dict = {}
 
     async def create(**kwargs: object) -> SimpleNamespace:
@@ -256,7 +256,7 @@ def test_request_offers_every_tool(monkeypatch: pytest.MonkeyPatch) -> None:
     agent = Agent(None, Room(), name="one", model="test", context_messages=50)  # type: ignore[arg-type]
     monkeypatch.setattr(agent.client.beta.messages, "create", create)
     asyncio.run(agent.generate([{"role": "user", "content": "anon-1a2b: hi"}]))
-    assert [t["name"] for t in sent["tools"]] == ["rename_user", "web_search", "web_fetch"]
+    assert [t["name"] for t in sent["tools"]] == ["rename_user", "list_people", "web_search", "web_fetch"]
 
 
 
@@ -309,3 +309,26 @@ def test_imitated_tool_records_are_not_posted(client: TestClient, monkeypatch: p
         ws.send_json({"type": "send", "text": "open it"})
         receive(ws)
         assert receive(ws)["message"]["text"] == "Sure, here it is."
+
+
+def test_agent_lists_everyone_offline_included(tmp_path: Path) -> None:
+    async def scenario() -> str:
+        db = Database(tmp_path / "test.db")
+        await db.connect()
+        agent = Agent(db, Room(), name="one", model="test", context_messages=50)
+        await agent.start()
+        here, _ = await db.create_user()
+        gone, _ = await db.create_user()
+        await db.add_member("민수")
+        agent.room.join(object(), here)  # type: ignore[arg-type]
+        people = await agent._list_people()
+        await agent.close()
+        await db.close()
+        assert gone.name in people
+        return people
+
+    lines = asyncio.run(scenario()).split("\n")
+    assert lines[0].startswith("Online now: anon-")
+    assert lines[1].startswith("Offline: anon-") and "(last seen " in lines[1]
+    assert lines[2] == "From documents you were given (never in the room): 민수"
+    assert not any("one" in line.split(": ", 1)[1].split(", ") for line in lines)
