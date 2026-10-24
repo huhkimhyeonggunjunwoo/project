@@ -9,8 +9,6 @@ const IDLE_AFTER = 3.5;
 const SPRING_STEP = 1 / 120;
 /** How fast the eyes cycle through the rainbow while thinking, in degrees per second. */
 const HUE_SPEED = 140;
-/** Hue gap between the two eyes, so the color flows from one to the other. */
-const HUE_OFFSET = 50;
 
 /**
  * The AI agent's face: two blob eyes that follow the pointer, wander when
@@ -170,11 +168,8 @@ export class Agent {
     ctx.fillRect(0, 0, this.width, this.height);
     // Saturation and lightness blend from white (glow 0) to a bright hue (glow 1).
     const glow = clamp(this.glow.value, 0, 1);
-    this.eyes.forEach((eye, i) => {
-      const hue = (this.hue + i * HUE_OFFSET) % 360;
-      ctx.fillStyle = `hsl(${hue} ${100 * glow}% ${lerp(100, 62, glow)}%)`;
-      eye.draw(ctx);
-    });
+    ctx.fillStyle = `hsl(${this.hue} ${100 * glow}% ${lerp(100, 62, glow)}%)`;
+    for (const eye of this.eyes) eye.draw(ctx);
   }
 
   /** Maps a screen point to a gaze direction, easing off toward the edges. */
