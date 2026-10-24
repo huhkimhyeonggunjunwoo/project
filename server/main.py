@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from agent import Agent
 from config import settings
 from db import Database
-from room import Room
+from room import Room, user_json
 
 HELLO_TIMEOUT_SECONDS = 10
 
@@ -80,10 +80,12 @@ async def chat_socket(ws: WebSocket) -> None:
     """Protocol (JSON frames):
 
     client → {"type": "hello", "token": "<saved token or null>"}   (first frame)
-    server → {"type": "welcome", "user": {...}, "token": "...", "history": {...}}
+    server → {"type": "welcome", "user": {...}, "token": "...", "history": {...},
+              "online": [{...}], "agent": {...} | null}
     client → {"type": "send", "text": "...", "clientId": "..."}
     server → {"type": "message", "message": {...}, "clientId"?: "..."}   (to everyone)
     server → {"type": "message", "message": {...}}   (the agent's reply, to everyone)
+    server → {"type": "presence", "users": [{...}]}   (to everyone, when who's online changes)
     server → {"type": "error", "message": "..."}
     """
     if not _origin_allowed(ws.headers.get("origin")):
@@ -109,17 +111,20 @@ async def chat_socket(ws: WebSocket) -> None:
 
     # Join before reading history so nothing sent in between is missed;
     # the client merges by message id.
-    room.join(ws)
+    room.join(ws, user)
     try:
         history = await db.messages_before(None, settings.history_page_size)
         await ws.send_json(
             {
                 "type": "welcome",
-                "user": {"id": user.id, "name": user.name},
+                "user": user_json(user),
                 "token": token,
                 "history": history,
+                "online": [user_json(u) for u in room.online()],
+                "agent": user_json(agent.user) if agent is not None else None,
             }
         )
+        await room.sync_presence()
 
         while True:
             data = await _receive(ws)

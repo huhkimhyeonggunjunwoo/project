@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react"
 import { ArrowRightIcon } from "lucide-react"
 
-import { useChat } from "@/chat/useChat"
+import type { Chat } from "@/chat/useChat"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import {
   InputGroup,
@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils"
 const LOAD_OLDER_THRESHOLD = 48
 
 interface ChatPanelProps {
+  chat: Chat
   /** Screen position of the text caret, so the eyes can follow what's typed. */
   onCaretMove?: (x: number, y: number) => void
   onSend?: (text: string) => void
@@ -46,7 +47,8 @@ function caretPoint(input: HTMLInputElement): { x: number; y: number } {
 }
 
 /**
- * Open chat overlay pinned to the bottom center: one room shared by everyone.
+ * Open chat overlay pinned to the bottom center of its container: one room
+ * shared by everyone.
  * Past messages stack above the input, stay below the eyes, fade out at the
  * top when there's more to scroll back to, and older pages load on scroll.
  */
@@ -58,8 +60,8 @@ export function ChatPanel(props: ChatPanelProps) {
   )
 }
 
-function ChatPanelBody({ onCaretMove, onSend }: ChatPanelProps) {
-  const { me, status, messages, hasMore, send, loadOlder } = useChat()
+function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
+  const { me, status, messages, hasMore, send, loadOlder } = chat
   const [draft, setDraft] = useState("")
   const { scrollToEnd } = useMessageScroller()
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -102,7 +104,7 @@ function ChatPanelBody({ onCaretMove, onSend }: ChatPanelProps) {
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[56%] bottom-0 flex justify-center px-4 pb-[max(1rem,8vh)]">
+    <div className="pointer-events-none absolute inset-x-0 top-[56%] bottom-0 flex justify-center px-4 pb-[max(1rem,8vh)]">
       <div className="flex min-h-0 w-full max-w-137 flex-col gap-3">
         {messages.length > 0 && (
           <MessageScroller className="pointer-events-auto flex-1">

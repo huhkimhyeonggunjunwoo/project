@@ -24,6 +24,20 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
         yield c
 
 
+def receive(ws) -> dict:
+    """Next frame, skipping presence updates."""
+    while (frame := ws.receive_json())["type"] == "presence":
+        pass
+    return frame
+
+
+def presence(ws) -> list[str]:
+    """Names in the next presence update."""
+    while (frame := ws.receive_json())["type"] != "presence":
+        pass
+    return [u["name"] for u in frame["users"]]
+
+
 def hello(ws, token: str | None = None) -> dict:
     ws.send_json({"type": "hello", "token": token})
     welcome = ws.receive_json()
@@ -55,8 +69,8 @@ def test_messages_reach_everyone_in_the_room(client: TestClient) -> None:
         hello(b)
         a.send_json({"type": "send", "text": "  hi all  ", "clientId": "c1"})
 
-        mine = a.receive_json()
-        theirs = b.receive_json()
+        mine = receive(a)
+        theirs = receive(b)
 
     assert mine["clientId"] == "c1"
     assert "clientId" not in theirs
@@ -70,7 +84,7 @@ def test_history_is_paginated_newest_first(client: TestClient) -> None:
         hello(ws)
         for i in range(75):
             ws.send_json({"type": "send", "text": f"m{i}"})
-            ws.receive_json()
+            receive(ws)
 
     with client.websocket_connect("/ws", headers=ORIGIN) as ws:
         page = hello(ws)["history"]
@@ -89,9 +103,31 @@ def test_history_is_paginated_newest_first(client: TestClient) -> None:
 def test_rejects_unknown_origin_and_long_messages(client: TestClient) -> None:
     with pytest.raises(Exception):
         with client.websocket_connect("/ws", headers={"origin": "https://evil.example"}) as ws:
-            ws.receive_json()
+            receive(ws)
 
     with client.websocket_connect("/ws", headers=ORIGIN) as ws:
         hello(ws)
         ws.send_json({"type": "send", "text": "x" * 5000})
-        assert ws.receive_json()["type"] == "error"
+        assert receive(ws)["type"] == "error"
+
+
+def test_online_users_are_announced(client: TestClient) -> None:
+    with client.websocket_connect("/ws", headers=ORIGIN) as a:
+        first = hello(a)
+        assert [u["name"] for u in first["online"]] == [first["user"]["name"]]
+        assert first["agent"] == {"id": "agent", "name": "one"}
+        assert presence(a) == [first["user"]["name"]]
+
+        with client.websocket_connect("/ws", headers=ORIGIN) as b:
+            second = hello(b)
+            both = [first["user"]["name"], second["user"]["name"]]
+            assert [u["name"] for u in second["online"]] == both
+            assert presence(a) == both
+
+            # A second tab of the same user doesn't list them twice.
+            with client.websocket_connect("/ws", headers=ORIGIN) as b2:
+                hello(b2, second["token"])
+            b.send_json({"type": "send", "text": "still one of me"})
+            assert receive(a)["message"]["text"] == "still one of me"
+
+        assert presence(a) == [first["user"]["name"]]

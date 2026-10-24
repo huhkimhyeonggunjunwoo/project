@@ -5,16 +5,39 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from db import User
+
 
 class Room:
     def __init__(self) -> None:
-        self._sockets: set[WebSocket] = set()
+        self._sockets: dict[WebSocket, User] = {}
+        self._announced: list[User] = []
+        self._tasks: set[asyncio.Task[None]] = set()
 
-    def join(self, ws: WebSocket) -> None:
-        self._sockets.add(ws)
+    def join(self, ws: WebSocket, user: User) -> None:
+        self._sockets[ws] = user
 
     def leave(self, ws: WebSocket) -> None:
-        self._sockets.discard(ws)
+        """Removes a socket and announces presence in the background, so the
+        update goes out even when the leaving handler is being cancelled."""
+        if self._sockets.pop(ws, None) is None:
+            return
+        task = asyncio.create_task(self.sync_presence())
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    def online(self) -> list[User]:
+        """Connected users in the order they arrived, once each (a user can
+        have several tabs open)."""
+        return list(dict.fromkeys(self._sockets.values()))
+
+    async def sync_presence(self) -> None:
+        """Tells everyone who's online, if that changed since the last time."""
+        users = self.online()
+        if users == self._announced:
+            return
+        self._announced = users
+        await self.broadcast({"type": "presence", "users": [user_json(u) for u in users]})
 
     async def broadcast(
         self,
@@ -34,3 +57,7 @@ class Room:
                 self.leave(ws)
 
         await asyncio.gather(*(send(ws) for ws in list(self._sockets)))
+
+
+def user_json(user: User) -> dict[str, str]:
+    return {"id": user.id, "name": user.name}

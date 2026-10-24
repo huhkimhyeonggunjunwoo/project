@@ -23,6 +23,10 @@ export interface ChatMessage extends Omit<ServerMessage, "id"> {
 
 interface State {
   me: ChatUser | null
+  /** The room's AI agent; always around, so it isn't in `online`. */
+  agent: ChatUser | null
+  /** People connected right now, in the order they arrived. */
+  online: ChatUser[]
   status: ConnectionStatus
   /** Stored messages sorted by id, then this client's pending ones. */
   messages: ChatMessage[]
@@ -31,12 +35,20 @@ interface State {
 
 type Action =
   | { type: "status"; status: ConnectionStatus }
-  | { type: "welcome"; user: ChatUser; history: MessagePage }
+  | { type: "welcome"; user: ChatUser; history: MessagePage; online: ChatUser[]; agent: ChatUser | null }
+  | { type: "presence"; users: ChatUser[] }
   | { type: "received"; message: ServerMessage; clientId?: string }
   | { type: "pending"; message: ChatMessage }
   | { type: "older"; page: MessagePage }
 
-const initialState: State = { me: null, status: "connecting", messages: [], hasMore: false }
+const initialState: State = {
+  me: null,
+  agent: null,
+  online: [],
+  status: "connecting",
+  messages: [],
+  hasMore: false,
+}
 
 const fromServer = (m: ServerMessage, key = `m${m.id}`): ChatMessage => ({ ...m, key, pending: false })
 
@@ -71,6 +83,8 @@ function reducer(state: State, action: Action): State {
       const reset = stored.length === 0 || (newestKnown < oldestInPage && action.history.hasMore)
       return {
         me: action.user,
+        agent: action.agent,
+        online: action.online,
         status: "open",
         messages: [...(reset ? page : mergeById(stored, page)), ...pending],
         hasMore: reset ? action.history.hasMore : state.hasMore,
@@ -86,6 +100,9 @@ function reducer(state: State, action: Action): State {
       const incoming = fromServer(action.message, matched ? clientId : undefined)
       return { ...state, messages: [...mergeById(stored, [incoming]), ...pending] }
     }
+
+    case "presence":
+      return { ...state, online: action.users }
 
     case "pending":
       return { ...state, messages: [...state.messages, action.message] }
@@ -151,11 +168,19 @@ export function useChat() {
         if (event.type === "welcome") {
           attempt = 0
           saveToken(event.token)
-          dispatch({ type: "welcome", user: event.user, history: event.history })
+          dispatch({
+            type: "welcome",
+            user: event.user,
+            history: event.history,
+            online: event.online,
+            agent: event.agent,
+          })
           // Resend anything typed while we were offline.
           for (const m of stateRef.current.messages) {
             if (m.pending) ws.send(JSON.stringify({ type: "send", text: m.text, clientId: m.key }))
           }
+        } else if (event.type === "presence") {
+          dispatch({ type: "presence", users: event.users })
         } else if (event.type === "message") {
           dispatch({ type: "received", message: event.message, clientId: event.clientId })
         } else if (event.type === "error") {
@@ -226,3 +251,5 @@ export function useChat() {
 
   return { ...state, send, loadOlder }
 }
+
+export type Chat = ReturnType<typeof useChat>

@@ -32,7 +32,16 @@ export interface MessagePage {
 }
 
 export type ServerEvent =
-  | { type: "welcome"; user: ChatUser; token: string; history: MessagePage }
+  | {
+      type: "welcome"
+      user: ChatUser
+      token: string
+      history: MessagePage
+      /** Connected people, in the order they arrived. */
+      online: ChatUser[]
+      agent: ChatUser | null
+    }
+  | { type: "presence"; users: ChatUser[] }
   | { type: "message"; message: ServerMessage; clientId?: string }
   | { type: "error"; message: string }
 

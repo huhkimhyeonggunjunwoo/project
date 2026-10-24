@@ -9,7 +9,7 @@ function isTextField(target: EventTarget | null): boolean {
   )
 }
 
-/** Full-screen canvas that draws the agent's eyes and feeds it pointer input. */
+/** Canvas filling its container that draws the agent's eyes and feeds it pointer input. */
 export function AgentEyes({ agent }: { agent: Agent }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -19,12 +19,11 @@ export function AgentEyes({ agent }: { agent: Agent }) {
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      const width = window.innerWidth
-      const height = window.innerHeight
+      const { left, top, width, height } = canvas.getBoundingClientRect()
       canvas.width = Math.round(width * dpr)
       canvas.height = Math.round(height * dpr)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      agent.resize(width, height)
+      agent.resize(width, height, left, top)
     }
 
     const onMove = (e: PointerEvent) => agent.pointerMove(e.clientX, e.clientY)
@@ -46,7 +45,10 @@ export function AgentEyes({ agent }: { agent: Agent }) {
     }
 
     resize()
-    window.addEventListener("resize", resize)
+    // The container can change size without the window doing so (e.g. the
+    // sidebar appearing at a breakpoint), so watch the canvas itself.
+    const observer = new ResizeObserver(resize)
+    observer.observe(canvas)
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerdown", onDown)
     window.addEventListener("pointerup", onUp)
@@ -69,7 +71,7 @@ export function AgentEyes({ agent }: { agent: Agent }) {
 
     return () => {
       cancelAnimationFrame(raf)
-      window.removeEventListener("resize", resize)
+      observer.disconnect()
       window.removeEventListener("pointermove", onMove)
       window.removeEventListener("pointerdown", onDown)
       window.removeEventListener("pointerup", onUp)
@@ -85,7 +87,7 @@ export function AgentEyes({ agent }: { agent: Agent }) {
       ref={canvasRef}
       role="img"
       aria-label="AI agent eyes"
-      className="fixed inset-0 block size-full touch-none select-none"
+      className="absolute inset-0 block size-full touch-none select-none"
     />
   )
 }

@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from agent import AGENT_ID, Agent, to_turns, unanswered
 from db import Database
 from room import Room
-from test_chat import ORIGIN, client, hello  # noqa: F401  (fixture)
+from test_chat import ORIGIN, client, hello, receive  # noqa: F401  (fixture)
 
 
 def test_history_becomes_named_turns() -> None:
@@ -41,11 +41,11 @@ def test_agent_reply_reaches_everyone(client: TestClient, monkeypatch: pytest.Mo
         me = hello(a)["user"]
         hello(b)
         a.send_json({"type": "send", "text": "anyone here?"})
-        assert a.receive_json()["message"]["text"] == "anyone here?"
-        assert b.receive_json()["message"]["text"] == "anyone here?"
+        assert receive(a)["message"]["text"] == "anyone here?"
+        assert receive(b)["message"]["text"] == "anyone here?"
 
         for ws in (a, b):
-            answer = ws.receive_json()["message"]
+            answer = receive(ws)["message"]
             assert answer["userId"] == AGENT_ID
             assert answer["userName"] == "one"
             assert answer["text"] == "hello, everyone"

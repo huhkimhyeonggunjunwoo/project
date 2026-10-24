@@ -26,6 +26,9 @@ export class Agent {
 
   private width = 0;
   private height = 0;
+  // Where the canvas sits on screen; pointer input arrives in screen coordinates.
+  private originX = 0;
+  private originY = 0;
   private cx = 0;
   private cy = 0;
   private scale = 1;
@@ -63,9 +66,11 @@ export class Agent {
     this.blinker.onReopen = () => this.pop(0.7);
   }
 
-  resize(width: number, height: number): void {
+  resize(width: number, height: number, originX = 0, originY = 0): void {
     this.width = width;
     this.height = height;
+    this.originX = originX;
+    this.originY = originY;
 
     // Same proportions as the reference on wide screens, larger on phones.
     const widthShare = lerp(0.72, 0.4, clamp((width - 420) / 680, 0, 1));
@@ -76,8 +81,9 @@ export class Agent {
     for (const eye of this.eyes) eye.snap();
   }
 
+  /** A point the eyes should look at, in screen (client) coordinates. */
   pointerMove(x: number, y: number): void {
-    this.pointer = { x, y };
+    this.pointer = { x: x - this.originX, y: y - this.originY };
     this.lastMoveAt = this.time;
   }
 
