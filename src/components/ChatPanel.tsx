@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react"
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react"
 import { ArrowRightIcon } from "lucide-react"
 
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -16,6 +16,7 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScroller,
 } from "@/components/ui/message-scroller"
 
 export interface ChatMessage {
@@ -50,10 +51,25 @@ function caretPoint(input: HTMLInputElement): { x: number; y: number } {
  * input, stay below the eyes, and fade out at the top when there's more to
  * scroll back to.
  */
-export function ChatPanel({ onCaretMove, onSend }: ChatPanelProps) {
+export function ChatPanel(props: ChatPanelProps) {
+  return (
+    <MessageScrollerProvider autoScroll>
+      <ChatPanelBody {...props} />
+    </MessageScrollerProvider>
+  )
+}
+
+function ChatPanelBody({ onCaretMove, onSend }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState("")
   const nextId = useRef(0)
+  const { scrollToEnd } = useMessageScroller()
+
+  // Jump to the newest message as soon as it's sent, even if scrolled up.
+  const lastMessage = messages[messages.length - 1]
+  useLayoutEffect(() => {
+    if (lastMessage?.role === "user") scrollToEnd()
+  }, [lastMessage, scrollToEnd])
 
   const trackCaret = (input: HTMLInputElement) => {
     if (!onCaretMove) return
@@ -72,34 +88,36 @@ export function ChatPanel({ onCaretMove, onSend }: ChatPanelProps) {
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[56%] bottom-0 flex justify-center px-4 pb-[max(1rem,8vh)]">
-      <div className="flex min-h-0 w-full max-w-[548px] flex-col gap-3">
+      <div className="flex min-h-0 w-full max-w-137 flex-col gap-3">
         {messages.length > 0 && (
-          <MessageScrollerProvider autoScroll>
-            <MessageScroller className="pointer-events-auto flex-1">
-              <MessageScrollerViewport className="[--scroll-fade-size:min(35%,4.5rem)]">
-                <MessageScrollerContent className="justify-end gap-2.5 px-1 pb-1">
-                  {messages.map((m) => (
-                    <MessageScrollerItem key={m.id} messageId={m.id}>
-                      <Message align={m.role === "user" ? "end" : "start"}>
-                        <MessageContent>
-                          <Bubble variant={m.role === "user" ? "tinted" : "ghost"}>
-                            <BubbleContent className="rounded-2xl px-4 py-2 text-[15px]">
-                              {m.text}
-                            </BubbleContent>
-                          </Bubble>
-                        </MessageContent>
-                      </Message>
-                    </MessageScrollerItem>
-                  ))}
-                </MessageScrollerContent>
-              </MessageScrollerViewport>
-              <MessageScrollerButton className="rounded-full" />
-            </MessageScroller>
-          </MessageScrollerProvider>
+          <MessageScroller className="pointer-events-auto flex-1">
+            <MessageScrollerViewport className="scroll-fade-18">
+              <MessageScrollerContent className="justify-end gap-2.5 px-1 pb-1">
+                {messages.map((m) => (
+                  <MessageScrollerItem key={m.id} messageId={m.id}>
+                    <Message align={m.role === "user" ? "end" : "start"}>
+                      <MessageContent>
+                        <Bubble
+                          variant={m.role === "user" ? "default" : "ghost"}
+                          // My messages: white bubble with dark text.
+                          className="[--primary:oklch(1_0_0)] [--primary-foreground:oklch(0.145_0_0)]"
+                        >
+                          <BubbleContent className="rounded-2xl px-4 py-2 text-[15px]">
+                            {m.text}
+                          </BubbleContent>
+                        </Bubble>
+                      </MessageContent>
+                    </Message>
+                  </MessageScrollerItem>
+                ))}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton className="rounded-full" />
+          </MessageScroller>
         )}
 
         <form onSubmit={submit} className="pointer-events-auto mt-auto shrink-0">
-          <InputGroup className="h-[50px] rounded-full border-[3px] dark:bg-black">
+          <InputGroup className="h-12.5 rounded-full border-[3px] dark:bg-black">
             <InputGroupInput
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -116,7 +134,7 @@ export function ChatPanel({ onCaretMove, onSend }: ChatPanelProps) {
                 variant="default"
                 size="icon-sm"
                 aria-label="Send"
-                className="size-[34px] rounded-full [&_svg:not([class*='size-'])]:size-[18px]"
+                className="size-8.5 rounded-full [&_svg:not([class*='size-'])]:size-4.5"
               >
                 <ArrowRightIcon />
               </InputGroupButton>

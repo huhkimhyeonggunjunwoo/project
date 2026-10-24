@@ -103,7 +103,11 @@ export class Eye {
   private centerY = 0;
   private needsSnap = true;
 
-  constructor(shape: EyeShape, faceCenter: Vec, phase: number) {
+  /**
+   * `size` overrides the eye's half width/height (reference units), so both
+   * eyes can share one size while keeping their own silhouette.
+   */
+  constructor(shape: EyeShape, faceCenter: Vec, phase: number, size?: { halfWidth: number; halfHeight: number }) {
     this.side = shape.side;
     this.phase = phase;
 
@@ -111,15 +115,17 @@ export class Eye {
     const { minX, minY, maxX, maxY } = boundsOf(outline);
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
-    this.halfWidth = (maxX - minX) / 2;
-    this.halfHeight = (maxY - minY) / 2;
+    const ownHalfWidth = (maxX - minX) / 2;
+    const ownHalfHeight = (maxY - minY) / 2;
+    this.halfWidth = size?.halfWidth ?? ownHalfWidth;
+    this.halfHeight = size?.halfHeight ?? ownHalfHeight;
     this.radius = Math.max(this.halfWidth, this.halfHeight);
     this.offsetX = cx - faceCenter.x;
     this.offsetY = cy - faceCenter.y;
     this.lidY = 2 * this.halfHeight * LID_LINE;
 
     // Read the reference silhouette at each control point, then soften it.
-    const unit = outline.map((p) => ({ x: (p.x - cx) / this.halfWidth, y: (p.y - cy) / this.halfHeight }));
+    const unit = outline.map((p) => ({ x: (p.x - cx) / ownHalfWidth, y: (p.y - cy) / ownHalfHeight }));
     let mean = 0;
     for (let k = 0; k < KNOTS; k++) {
       this.knots[k] = rayDistance(unit, (TAU * k) / KNOTS);

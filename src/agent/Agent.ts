@@ -38,13 +38,23 @@ export class Agent {
   private readonly wobble: number;
 
   constructor() {
-    const all = [LEFT_EYE, RIGHT_EYE].flatMap((s) => sampleClosedPath(parseCubicPath(s.path), 120));
-    const b = boundsOf(all);
+    const outlines = [LEFT_EYE, RIGHT_EYE].map((s) => sampleClosedPath(parseCubicPath(s.path), 120));
+    const b = boundsOf(outlines.flat());
     this.faceCenter = { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 };
     this.faceWidth = b.maxX - b.minX;
     this.faceHeight = b.maxY - b.minY;
 
-    this.eyes = [new Eye(LEFT_EYE, this.faceCenter, 0.4), new Eye(RIGHT_EYE, this.faceCenter, 2.3)];
+    // Both eyes get the same size: the average of the two reference eyes.
+    const sizes = outlines.map(boundsOf);
+    const size = {
+      halfWidth: sizes.reduce((sum, s) => sum + (s.maxX - s.minX) / 2, 0) / sizes.length,
+      halfHeight: sizes.reduce((sum, s) => sum + (s.maxY - s.minY) / 2, 0) / sizes.length,
+    };
+
+    this.eyes = [
+      new Eye(LEFT_EYE, this.faceCenter, 0.4, size),
+      new Eye(RIGHT_EYE, this.faceCenter, 2.3, size),
+    ];
 
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     this.wobble = reducedMotion ? 0.35 : 1;
