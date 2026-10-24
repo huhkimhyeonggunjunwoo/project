@@ -293,7 +293,7 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
                             {showName && (
                               <MessageHeader>{m.userName}</MessageHeader>
                             )}
-                            {m.private && (
+                            {m.private && !prev?.private && (
                               <MessageHeader className="gap-1">
                                 <EyeOffIcon className="size-3" />
                                 Only visible to you

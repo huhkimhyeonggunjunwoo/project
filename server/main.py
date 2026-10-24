@@ -12,6 +12,8 @@ from db import Database
 from room import Room, user_json
 
 HELLO_TIMEOUT_SECONDS = 10
+# Between the agent's welcome notes, so they arrive one after another.
+GREETING_PAUSE_SECONDS = 1.2
 
 db = Database(settings.database_file)
 room = Room()
@@ -68,6 +70,17 @@ async def list_messages(
     return await db.messages_before(before, limit or settings.history_page_size, for_user)
 
 
+async def _greet(ws: WebSocket, notes: list[dict[str, Any]]) -> None:
+    """Sends the welcome notes to one client, a moment apart."""
+    try:
+        for i, note in enumerate(notes):
+            if i:
+                await asyncio.sleep(GREETING_PAUSE_SECONDS)
+            await ws.send_json({"type": "private", "message": note})
+    except Exception:
+        pass  # They left before it was done.
+
+
 def _origin_allowed(origin: str | None) -> bool:
     return not settings.cors_origins or origin is None or origin in settings.cors_origins
 
@@ -96,7 +109,8 @@ async def chat_socket(ws: WebSocket) -> None:
     server → {"type": "message", "message": {...}}   (the agent's reply, to everyone;
               its "replyTo" lists the ids of the people it was answering)
     server → {"type": "private", "message": {"key": "...", ..., "hints"?: [...]}}
-              (just this client, not stored; hints are suggested replies to show under it)
+              (just this client, not stored; hints are suggested replies to show under it.
+              The welcome notes come as several of these, a moment apart)
     server → {"type": "rename", "user": {...}}   (to everyone, when the agent renames someone)
     server → {"type": "typing", "typing": bool, "replyTo": [...]}
               (to everyone: the agent started / finished answering, and whom)
@@ -129,6 +143,7 @@ async def chat_socket(ws: WebSocket) -> None:
     # Join before reading history so nothing sent in between is missed;
     # the client merges by message id.
     room.join(ws, user)
+    greeting: asyncio.Task[None] | None = None
     try:
         mine = hello.get("history") == "mine"
         history = await db.messages_before(None, settings.history_page_size, user.id if mine else None)
@@ -147,7 +162,7 @@ async def chat_socket(ws: WebSocket) -> None:
             }
         )
         if agent is not None:
-            await ws.send_json({"type": "private", "message": agent.greeting(user)})
+            greeting = asyncio.create_task(_greet(ws, agent.greeting(user)))
         await room.sync_presence()
 
         while True:
@@ -172,4 +187,6 @@ async def chat_socket(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        if greeting is not None:
+            greeting.cancel()
         room.leave(ws)

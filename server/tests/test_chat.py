@@ -19,6 +19,7 @@ async def silent(self: Agent, turns: list) -> None:
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setattr(main, "db", Database(tmp_path / "test.db"))
     monkeypatch.setattr(main.settings, "memory_path", tmp_path / "wiki")
+    monkeypatch.setattr(main, "GREETING_PAUSE_SECONDS", 0)
     # Never call Claude in tests; tests that want replies swap this out.
     monkeypatch.setattr(Agent, "generate", silent)
     with TestClient(main.app) as c:
@@ -136,14 +137,17 @@ def test_online_users_are_announced(client: TestClient) -> None:
 
 def test_private_greeting_only_reaches_the_newcomer(client: TestClient) -> None:
     with client.websocket_connect("/ws", headers=ORIGIN) as a:
-        hello(a)
-        greeting = a.receive_json()
-        assert greeting["type"] == "private"
-        assert greeting["message"]["key"] == "welcome"
-        assert greeting["message"]["userId"] == "agent"
-        assert "id" not in greeting["message"]
-        # It comes with a first thing to ask, in English like the note.
-        assert greeting["message"]["hints"] == ["Find someone who's a good match for me"]
+        me = hello(a)["user"]
+        notes = []
+        while len(notes) < 4:
+            frame = a.receive_json()
+            if frame["type"] == "private":
+                notes.append(frame["message"])
+        assert [n["key"] for n in notes] == ["welcome-1", "welcome-2", "welcome-3", "welcome-4"]
+        assert notes[0]["text"] == f"Hi {me['name']}, welcome to One House!"
+        assert all(n["userId"] == "agent" and "id" not in n for n in notes)
+        # The last one comes with a first thing to ask, in English like the notes.
+        assert [n.get("hints") for n in notes] == [None, None, None, ["Find someone who's a good match for me"]]
 
         with client.websocket_connect("/ws", headers=ORIGIN) as b:
             hello(b)

@@ -112,7 +112,7 @@ one person, there's no need to keep repeating their name.
 # Marks past tool calls inside the agent's own turns (see the prompt above).
 TOOL_RECORD = re.compile(r"<tool_record>.*?</tool_record>\s*", re.DOTALL)
 SENTENCE_END = re.compile(r"(?<=[.!?。！？])\s+")
-# Offered under the welcome note, before anything else has been said.
+# Offered under the welcome notes, before anything else has been said.
 STARTER_HINT = "Find someone who's a good match for me"
 # Seconds between the messages of one reply, so they arrive one after another.
 PAUSE_BETWEEN_MESSAGES = 0.8
@@ -334,21 +334,25 @@ class Agent:
         self.typing = False
         self.reply_to: list[str] = []
 
-    def greeting(self, user: User) -> dict[str, Any]:
-        """A note only `user` sees when they connect. It isn't stored, so it
-        isn't part of the room's history or the agent's context."""
-        return {
-            "key": "welcome",
-            "userId": self.user.id,
-            "userName": self.user.name,
-            "text": (
-                f"Hi {user.name}, welcome to One House! I'm {self.user.name}. Everyone here shares "
-                "this one room, so whatever you send, and whatever I say back, everyone can see. "
-                "Ask me anything."
-            ),
-            "createdAt": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
-            "hints": [STARTER_HINT],
-        }
+    def greeting(self, user: User) -> list[dict[str, Any]]:
+        """Notes only `user` sees when they connect, sent a moment apart. They
+        aren't stored, so they aren't part of the room's history or the
+        agent's context. The last one comes with the starter hint."""
+        texts = [
+            f"Hi {user.name}, welcome to One House!",
+            f"I'm {self.user.name}. Everyone here shares this one room, so whatever you send, "
+            "and whatever I say back, everyone can see.",
+            "Here you can get matched with people you click with, or just network. "
+            "I'm one big agent that connects everyone.",
+            "Now, have fun with me!",
+        ]
+        now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        notes = [
+            {"key": f"welcome-{i}", "userId": self.user.id, "userName": self.user.name, "text": text, "createdAt": now}
+            for i, text in enumerate(texts, 1)
+        ]
+        notes[-1]["hints"] = [STARTER_HINT]
+        return notes
 
     async def start(self) -> None:
         await self.db.ensure_user(self.user)
