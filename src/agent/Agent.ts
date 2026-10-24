@@ -89,6 +89,11 @@ export class Agent {
     this.blinker.trigger();
   }
 
+  /** A small jelly bounce, e.g. when a message is sent. */
+  acknowledge(): void {
+    this.pop(1.4);
+  }
+
   update(dt: number): void {
     this.time += dt;
 
