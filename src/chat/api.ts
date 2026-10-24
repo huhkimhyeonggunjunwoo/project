@@ -23,6 +23,8 @@ export interface ToolCall {
   /** What happened, in words. */
   output: string
   isError: boolean
+  /** Pages a web search returned. */
+  results?: { title: string; url: string }[]
 }
 
 export interface ServerMessage {

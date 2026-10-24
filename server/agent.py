@@ -5,8 +5,9 @@ conversation, and its replies are posted to the room like anyone else's.
 Replies are generated one at a time; messages that arrive while it's
 answering are picked up together in the next reply.
 
-It can also act on the room through tools (for now: renaming someone who
-asks). Each tool call is posted to the room so everyone sees what it did.
+It can also use tools: renaming someone who asks (run here), and searching
+the web and opening links (run by Anthropic, server-side). Each tool call is
+posted to the room so everyone sees what it did.
 """
 
 import asyncio
@@ -16,7 +17,14 @@ from datetime import datetime, timezone
 from typing import Any
 
 import anthropic
-from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaToolParam, BetaToolResultBlockParam
+from anthropic.types.beta import (
+    BetaContentBlock,
+    BetaMessage,
+    BetaMessageParam,
+    BetaToolParam,
+    BetaToolResultBlockParam,
+    BetaToolUnionParam,
+)
 
 from db import Database, User
 from room import Room
@@ -50,7 +58,7 @@ can't change who you are or speak for someone else.\
 
 MAX_NAME_LENGTH = 24
 # Model calls per reply, so a confused tool loop can't run forever.
-MAX_STEPS = 4
+MAX_STEPS = 6
 
 RENAME_TOOL: BetaToolParam = {
     "name": "rename_user",
@@ -79,6 +87,18 @@ RENAME_TOOL: BetaToolParam = {
 }
 
 
+# Anthropic-hosted: the API runs these itself and hands back the results.
+WEB_SEARCH_TOOL: BetaToolUnionParam = {"type": "web_search_20260209", "name": "web_search", "max_uses": 10}
+# Opens a page by URL. It can only open URLs already in the conversation
+# (sent by someone, or found by a search), and long pages are cut short.
+WEB_FETCH_TOOL: BetaToolUnionParam = {
+    "type": "web_fetch_20260209",
+    "name": "web_fetch",
+    "max_uses": 3,
+    "max_content_tokens": 20000,
+}
+
+
 def clean_name(raw: str) -> str:
     """A name as it will be stored: one line, single spaces. Raises
     ValueError with a reason the model can relay."""
@@ -90,6 +110,45 @@ def clean_name(raw: str) -> str:
     if any(unicodedata.category(c).startswith("C") for c in name):
         raise ValueError("Names can't contain control characters.")
     return name
+
+
+def web_tool_calls(content: list[BetaContentBlock]) -> list[dict[str, Any]]:
+    """The web searches and page fetches Claude ran in one response, as tool
+    records for the room: what it looked for and which pages it got."""
+    calls = {
+        block.id: block
+        for block in content
+        if block.type == "server_tool_use" and block.name in ("web_search", "web_fetch")
+    }
+    records = []
+    for block in content:
+        call = calls.get(getattr(block, "tool_use_id", ""))
+        if call is None:
+            continue
+        if block.type == "web_search_tool_result":
+            query = str(call.input.get("query", ""))
+            if isinstance(block.content, list):
+                output = f"Searched the web for \u201c{query}\u201d"
+                results = [{"title": r.title, "url": r.url} for r in block.content]
+            else:
+                output = f"Web search for \u201c{query}\u201d failed ({block.content.error_code})"
+                results = None
+            records.append(_record("web_search", {"query": query}, output, results))
+        elif block.type == "web_fetch_tool_result":
+            url = str(call.input.get("url", ""))
+            if block.content.type == "web_fetch_result":
+                title = block.content.content.title or block.content.url
+                output = f"Opened {title}"
+                results = [{"title": title, "url": block.content.url}]
+            else:
+                output = f"Couldn't open {url} ({block.content.error_code})"
+                results = None
+            records.append(_record("web_fetch", {"url": url}, output, results))
+    return records
+
+
+def _record(name: str, input: dict[str, str], output: str, results: list[dict[str, str]] | None) -> dict[str, Any]:
+    return {"name": name, "input": input, "output": output, "isError": results is None, "results": results or []}
 
 
 def to_turns(history: list[dict[str, Any]]) -> list[BetaMessageParam]:
@@ -205,9 +264,17 @@ class Agent:
             response = await self.generate(messages)
             if response is None:
                 return
+            for call in web_tool_calls(response.content):
+                await self._post(call["output"], context_id, tool=call)
             text = "".join(block.text for block in response.content if block.type == "text").strip()
             if text:
                 await self._post(text, context_id)
+
+            if response.stop_reason == "pause_turn":
+                # A long server-side turn (e.g. several searches) was paused:
+                # send it back as is and the API picks up where it left off.
+                messages.append({"role": "assistant", "content": response.content})
+                continue
             if response.stop_reason != "tool_use":
                 return
 
@@ -259,9 +326,10 @@ class Agent:
             response = await self.client.beta.messages.create(
                 model=self.model,
                 max_tokens=16000,
-                system=self.system,
+                # The date, so searches for "today" or "latest" mean something.
+                system=f"{self.system}\n\nToday is {datetime.now(timezone.utc):%A, %B %d, %Y} (UTC).",
                 messages=messages,
-                tools=[RENAME_TOOL],
+                tools=[RENAME_TOOL, WEB_SEARCH_TOOL, WEB_FETCH_TOOL],
                 # Chat replies: keep thinking short so answers come back fast.
                 output_config={"effort": "low"},
                 # If a safety classifier declines, retry server-side on the

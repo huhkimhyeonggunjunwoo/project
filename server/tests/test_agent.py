@@ -179,3 +179,79 @@ def test_rename_is_limited_to_people_who_just_asked(tmp_path: Path) -> None:
         await db.close()
 
     asyncio.run(scenario())
+
+
+def test_web_searches_are_posted_and_paused_turns_resume(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    steps: list[list] = []
+    search = [
+        SimpleNamespace(type="server_tool_use", id="srvtoolu_1", name="web_search", input={"query": "seoul weather"}),
+        SimpleNamespace(
+            type="web_search_tool_result",
+            tool_use_id="srvtoolu_1",
+            content=[SimpleNamespace(type="web_search_result", title="Seoul forecast", url="https://example.com/seoul")],
+        ),
+    ]
+
+    async def step(self: Agent, messages: list) -> SimpleNamespace:
+        steps.append(list(messages))
+        if len(steps) == 1:
+            return SimpleNamespace(stop_reason="pause_turn", content=search)
+        return said("It's sunny in Seoul.")
+
+    monkeypatch.setattr(Agent, "generate", step)
+
+    with client.websocket_connect("/ws", headers=ORIGIN) as ws:
+        hello(ws)
+        ws.send_json({"type": "send", "text": "weather in seoul?"})
+        receive(ws)  # my own message
+        tool = receive(ws)["message"]
+        assert tool["text"] == "Searched the web for “seoul weather”"
+        assert tool["tool"]["results"] == [{"title": "Seoul forecast", "url": "https://example.com/seoul"}]
+        assert tool["tool"]["isError"] is False
+        assert receive(ws)["message"]["text"] == "It's sunny in Seoul."
+
+    # The paused turn went back as the last (assistant) message, with nothing added after it.
+    assert steps[1][-1] == {"role": "assistant", "content": search}
+
+
+
+def test_opened_links_are_posted() -> None:
+    from agent import web_tool_calls
+
+    page = SimpleNamespace(type="web_fetch_result", url="https://example.com/jun", content=SimpleNamespace(title="Jun's profile"))
+    content = [
+        SimpleNamespace(type="server_tool_use", id="srvtoolu_1", name="web_fetch", input={"url": "https://example.com/jun"}),
+        SimpleNamespace(type="web_fetch_tool_result", tool_use_id="srvtoolu_1", content=page),
+        SimpleNamespace(type="server_tool_use", id="srvtoolu_2", name="web_fetch", input={"url": "https://nope.example"}),
+        SimpleNamespace(
+            type="web_fetch_tool_result",
+            tool_use_id="srvtoolu_2",
+            content=SimpleNamespace(type="web_fetch_tool_result_error", error_code="url_not_accessible"),
+        ),
+    ]
+    opened, failed = web_tool_calls(content)
+    assert opened == {
+        "name": "web_fetch",
+        "input": {"url": "https://example.com/jun"},
+        "output": "Opened Jun's profile",
+        "isError": False,
+        "results": [{"title": "Jun's profile", "url": "https://example.com/jun"}],
+    }
+    assert failed["isError"] is True
+    assert failed["output"] == "Couldn't open https://nope.example (url_not_accessible)"
+
+
+def test_request_offers_every_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real request (not a faked generate) names all three tools."""
+    sent: dict = {}
+
+    async def create(**kwargs: object) -> SimpleNamespace:
+        sent.update(kwargs)
+        return said("ok")
+
+    agent = Agent(None, Room(), name="one", model="test", context_messages=50)  # type: ignore[arg-type]
+    monkeypatch.setattr(agent.client.beta.messages, "create", create)
+    asyncio.run(agent.generate([{"role": "user", "content": "anon-1a2b: hi"}]))
+    assert [t["name"] for t in sent["tools"]] == ["rename_user", "web_search", "web_fetch"]

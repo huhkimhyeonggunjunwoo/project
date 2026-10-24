@@ -5,9 +5,17 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { MarkerContent, MarkerIcon, markerVariants } from "@/components/ui/marker"
 import { cn } from "@/lib/utils"
 
+function hostname(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return url
+  }
+}
+
 /**
  * One thing the agent did, shown in the room as a status line: what happened,
- * and (on click) the exact input and result.
+ * and (on click) the exact input and result, plus any pages a search found.
  */
 export function ToolCallMarker({ tool }: { tool: ToolCall }) {
   return (
@@ -40,6 +48,28 @@ export function ToolCallMarker({ tool }: { tool: ToolCall }) {
             <dt className="font-medium text-muted-foreground">{tool.isError ? "Error" : "Result"}</dt>
             <dd className={cn(tool.isError && "text-destructive")}>{tool.output}</dd>
           </div>
+          {tool.results && tool.results.length > 0 && (
+            <div className="grid gap-1">
+              <dt className="font-medium text-muted-foreground">Sources</dt>
+              <dd>
+                <ol className="grid gap-1">
+                  {tool.results.map((r) => (
+                    <li key={r.url} className="min-w-0">
+                      <a
+                        href={r.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex min-w-0 items-baseline gap-1.5 hover:text-foreground"
+                      >
+                        <span className="truncate underline underline-offset-3">{r.title || r.url}</span>
+                        <span className="shrink-0 text-muted-foreground">{hostname(r.url)}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </dd>
+            </div>
+          )}
         </dl>
       </CollapsibleContent>
     </Collapsible>
