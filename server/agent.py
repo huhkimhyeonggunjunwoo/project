@@ -34,6 +34,7 @@ from anthropic.types.beta import (
     BetaToolUnionParam,
 )
 
+import achievements
 from db import Database, User
 from hints import SCHEMA as HINT_SCHEMA
 from hints import parse as parse_hints
@@ -480,6 +481,7 @@ class Agent:
                     result, output, is_error = self.memory.read_notes(block.input)
                 elif block.name == LIST_PEOPLE_TOOL["name"]:
                     result, output, is_error = await self._list_people(), "Looked up everyone in the room", False
+                    await self._award_matches(list(speakers))
                 else:
                     output, is_error = await self._run_tool(block.name, block.input, speakers)
                     result = output
@@ -501,6 +503,13 @@ class Agent:
         message = await self.db.add_message(self.user, text, context_id=context_id, reply_to=reply_to, tool=tool)
         await self.room.broadcast({"type": "message", "message": message})
         return message
+
+    async def _award_matches(self, user_ids: list[str]) -> None:
+        """The agent is looking for people for these speakers: those who've
+        shared a profile get matched on it."""
+        for user_id in user_ids:
+            if achievements.PROFILE in await self.db.achievements(user_id):
+                await achievements.award(self.db, self.room, user_id, achievements.MATCH)
 
     async def _list_people(self) -> str:
         """Everyone but the agent, grouped for the model."""
@@ -538,6 +547,7 @@ class Agent:
             return f"The name {new_name} is already taken.", True
         speakers[user_id] = new_name
         await self.room.rename(user)
+        await achievements.award(self.db, self.room, user_id, achievements.RENAME)
         return f"Renamed {current} to {new_name}.", False
 
     async def write_hints(self, history: list[dict[str, Any]], who: list[str]) -> list[str] | None:

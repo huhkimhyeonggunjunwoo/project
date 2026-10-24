@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 
 import { Agent } from "@/agent/Agent"
 import { useChat } from "@/chat/useChat"
+import { AchievementsDialogButton, AchievementsSidebar } from "@/components/Achievements"
 import { AgentEyes } from "@/components/AgentEyes"
 import { ChatPanel } from "@/components/ChatPanel"
 import { PeopleDialogButton, PeopleSidebar } from "@/components/People"
@@ -17,8 +18,10 @@ export function App() {
     <main className="relative h-full overflow-hidden">
       <AgentEyes agent={agent} />
       <PeopleSidebar {...people} className="absolute inset-y-0 left-0 hidden lg:flex" />
-      <header className="pointer-events-none absolute inset-x-0 top-0 flex h-12 items-center px-2 *:pointer-events-auto lg:hidden">
+      <AchievementsSidebar earned={chat.achievements} className="absolute inset-y-0 right-0 hidden lg:flex" />
+      <header className="pointer-events-none absolute inset-x-0 top-0 flex h-12 items-center justify-between px-2 *:pointer-events-auto lg:hidden">
         <PeopleDialogButton {...people} />
+        <AchievementsDialogButton earned={chat.achievements} />
       </header>
       <ChatPanel
         chat={chat}

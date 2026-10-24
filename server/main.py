@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+import achievements
 from agent import AGENT_ID, Agent
 from config import settings
 from db import Database, User
@@ -101,8 +102,9 @@ async def chat_socket(ws: WebSocket) -> None:
               "mine": the history in welcome is only my messages and the agent's replies to me)
     server → {"type": "welcome", "user": {...}, "token": "...", "history": {...},
               "online": [{...}], "users": [{...}], "agent": {...} | null, "agentTyping": bool,
-              "agentReplyTo": ["<user id>", ...], "hints": {...} | null}
-              (users: everyone who has ever joined, most recently seen first)
+              "agentReplyTo": ["<user id>", ...], "hints": {...} | null, "achievements": ["<key>", ...]}
+              (users: everyone who has ever joined, most recently seen first;
+              achievements: the keys I've earned, see achievements.py)
     client → {"type": "send", "text": "...", "clientId": "..."}
     server → {"type": "message", "message": {...}, "clientId"?: "..."}   (to everyone)
     server → {"type": "message", "message": {...}}   (the agent's reply, to everyone;
@@ -116,6 +118,8 @@ async def chat_socket(ws: WebSocket) -> None:
     server → {"type": "presence", "users": [{...}]}   (to everyone, when who's online changes)
     server → {"type": "hints", "messageId": n, "for": [...], "hints": ["...", ...]}
               (just the people the agent's reply #n answered: suggested next messages)
+    server → {"type": "achievement", "key": "..."}   (just this person, on each of their tabs:
+              they've just earned it)
     server → {"type": "error", "message": "..."}
     """
     if not _origin_allowed(ws.headers.get("origin")):
@@ -158,6 +162,7 @@ async def chat_socket(ws: WebSocket) -> None:
                 "agentTyping": agent is not None and agent.typing,
                 "agentReplyTo": agent.reply_to if agent is not None else [],
                 "hints": agent.hints if agent is not None and agent.hints and user.id in agent.hints["for"] else None,
+                "achievements": await db.achievements(user.id),
             }
         )
         if agent is not None:
@@ -181,6 +186,8 @@ async def chat_socket(ws: WebSocket) -> None:
 
             message = await db.add_message(user, text)
             await room.broadcast({"type": "message", "message": message}, sender=ws, sender_extra=extra)
+            if achievements.shares_link(text):
+                await achievements.award(db, room, user.id, achievements.PROFILE)
             if agent is not None:
                 agent.notify()
     except WebSocketDisconnect:

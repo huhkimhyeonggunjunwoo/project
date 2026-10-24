@@ -32,6 +32,13 @@ CREATE TABLE IF NOT EXISTS messages (
     -- Agent messages only: JSON list of the user ids it was answering.
     reply_to   TEXT
 );
+
+CREATE TABLE IF NOT EXISTS achievements (
+    user_id   TEXT NOT NULL REFERENCES users(id),
+    key       TEXT NOT NULL,
+    earned_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, key)
+);
 """
 
 # Columns added after the first release, for databases created before them.
@@ -176,6 +183,23 @@ class Database:
         await self.conn.execute("UPDATE users SET name = ? WHERE id = ?", (name, user_id))
         await self.conn.commit()
         return User(id=user_id, name=name)
+
+    async def achievements(self, user_id: str) -> list[str]:
+        """Keys of the achievements this user has earned, oldest first."""
+        async with self.conn.execute(
+            "SELECT key FROM achievements WHERE user_id = ? ORDER BY earned_at, key", (user_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [row["key"] for row in rows]
+
+    async def award(self, user_id: str, key: str) -> bool:
+        """Gives a user an achievement. Returns whether it's new to them."""
+        cursor = await self.conn.execute(
+            "INSERT OR IGNORE INTO achievements (user_id, key, earned_at) VALUES (?, ?, ?)",
+            (user_id, key, _now()),
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
 
     async def add_message(
         self,

@@ -77,12 +77,15 @@ export type ServerEvent =
       agentReplyTo: string[]
       /** The latest hints, if they're for me. */
       hints: AgentHints | null
+      /** Keys of the achievements I've earned. */
+      achievements?: string[]
     }
   | { type: "presence"; users: ChatUser[] }
   | { type: "private"; message: PrivateMessage }
   | { type: "rename"; user: ChatUser }
   | { type: "typing"; typing: boolean; replyTo: string[] }
   | ({ type: "hints" } & AgentHints)
+  | { type: "achievement"; key: string }
   | { type: "message"; message: ServerMessage; clientId?: string }
   | { type: "error"; message: string }
 

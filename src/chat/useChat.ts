@@ -75,6 +75,8 @@ interface State {
   online: ChatUser[]
   /** Everyone who has ever joined, online or not, most recently seen first. */
   users: ChatUser[]
+  /** Keys of the achievements I've earned. */
+  achievements: string[]
   status: ConnectionStatus
   /** Stored messages sorted by id, then this client's pending ones. */
   messages: ChatMessage[]
@@ -95,8 +97,10 @@ type Action =
       agentTyping: boolean
       agentReplyTo: string[]
       hints: AgentHints | null
+      achievements: string[]
     }
   | { type: "presence"; users: ChatUser[] }
+  | { type: "achievement"; key: string }
   | { type: "typing"; typing: boolean; replyTo: string[] }
   | { type: "hints"; hints: AgentHints }
   | { type: "private"; message: PrivateMessage }
@@ -114,6 +118,7 @@ const initialState: State = {
   hints: null,
   online: [],
   users: [],
+  achievements: [],
   status: "connecting",
   messages: [],
   privates: [],
@@ -162,6 +167,10 @@ function reducer(state: State, action: Action): State {
     case "hints":
       return { ...state, hints: action.hints }
 
+    case "achievement":
+      if (state.achievements.includes(action.key)) return state
+      return { ...state, achievements: [...state.achievements, action.key] }
+
     case "welcome": {
       const page = action.history.messages.map((m) => fromServer(m))
       const { stored, pending } = split(state.messages)
@@ -178,6 +187,7 @@ function reducer(state: State, action: Action): State {
         hints: action.hints,
         online: action.online,
         users: action.users,
+        achievements: action.achievements,
         status: "open",
         messages: [...(reset ? page : mergeById(stored, page)), ...pending],
         privates: state.privates,
@@ -334,6 +344,7 @@ export function useChat() {
             agentTyping: event.agentTyping,
             agentReplyTo: event.agentReplyTo ?? [],
             hints: event.hints ?? null,
+            achievements: event.achievements ?? [],
           })
           // Resend anything typed while we were offline.
           for (const m of stateRef.current.messages) {
@@ -343,6 +354,8 @@ export function useChat() {
           dispatch({ type: "typing", typing: event.typing, replyTo: event.replyTo ?? [] })
         } else if (event.type === "hints") {
           dispatch({ type: "hints", hints: { messageId: event.messageId, hints: event.hints } })
+        } else if (event.type === "achievement") {
+          dispatch({ type: "achievement", key: event.key })
         } else if (event.type === "rename") {
           dispatch({ type: "rename", user: event.user })
         } else if (event.type === "private") {
