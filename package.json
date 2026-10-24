@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "share:web": "npm run build && vite preview --host 127.0.0.1 --port 4180 --strictPort",
-    "share:tunnel": "caffeinate -i cloudflared tunnel --no-autoupdate --url http://127.0.0.1:4180",
+    "share:tunnel": "caffeinate -i cloudflared tunnel run --url http://127.0.0.1:8000 onehouse",
     "server": "uv run --directory server fastapi dev main.py",
     "server:prod": "uv run --directory server --env-file .env.production fastapi run main.py",
     "server:reset": "uv run --directory server python reset_db.py",
