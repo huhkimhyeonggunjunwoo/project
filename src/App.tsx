@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import { Agent } from "@/agent/Agent"
 import { useChat } from "@/chat/useChat"
@@ -10,6 +10,8 @@ export function App() {
   const [agent] = useState(() => new Agent())
   const chat = useChat()
   const people = { me: chat.me, agent: chat.agent, online: chat.online, users: chat.users }
+
+  useEffect(() => agent.setThinking(chat.agentTyping), [agent, chat.agentTyping])
 
   return (
     <main className="relative h-full overflow-hidden">

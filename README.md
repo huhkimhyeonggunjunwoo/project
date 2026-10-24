@@ -82,6 +82,7 @@ The agent's face is two white blob eyes drawn on a canvas behind the chat.
 - After a few seconds without movement they start looking around on their own.
 - They blink at random intervals, sometimes twice in a row.
 - They squish when pressed and do a small jelly bounce when you send a message.
+- While the agent is writing a reply, they fade into color and keep cycling through the rainbow, then fade back to white when it's done.
 - With `prefers-reduced-motion`, the shape morphing is toned down.
 
 ## Architecture

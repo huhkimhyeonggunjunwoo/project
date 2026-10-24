@@ -7,6 +7,10 @@ import { LEFT_EYE, REFERENCE_FRAME, RIGHT_EYE } from './shapes';
 /** Seconds without pointer movement before the agent starts looking around. */
 const IDLE_AFTER = 3.5;
 const SPRING_STEP = 1 / 120;
+/** How fast the eyes cycle through the rainbow while thinking, in degrees per second. */
+const HUE_SPEED = 140;
+/** Hue gap between the two eyes, so the color flows from one to the other. */
+const HUE_OFFSET = 50;
 
 /**
  * The AI agent's face: two blob eyes that follow the pointer, wander when
@@ -23,6 +27,9 @@ export class Agent {
   private readonly squashX = new Spring(1, 260, 0.32);
   private readonly squashY = new Spring(1, 260, 0.32);
   private readonly blinker = new Blinker();
+  // 0 = plain white, 1 = full rainbow; eases in and out with thinking.
+  private readonly glow = new Spring(0, 30, 1);
+  private hue = 0;
 
   private width = 0;
   private height = 0;
@@ -110,6 +117,11 @@ export class Agent {
     this.pop(1.4);
   }
 
+  /** While the agent is writing a reply, its eyes cycle through the rainbow. */
+  setThinking(thinking: boolean): void {
+    this.glow.target = thinking ? 1 : 0;
+  }
+
   update(dt: number): void {
     this.time += dt;
 
@@ -131,8 +143,10 @@ export class Agent {
       this.gazeY.step(h);
       this.squashX.step(h);
       this.squashY.step(h);
+      this.glow.step(h);
     }
     this.blinker.update(dt);
+    this.hue = (this.hue + HUE_SPEED * dt) % 360;
 
     const frame: FrameState = {
       time: this.time,
@@ -154,8 +168,13 @@ export class Agent {
   render(ctx: CanvasRenderingContext2D): void {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, this.width, this.height);
-    ctx.fillStyle = '#fff';
-    for (const eye of this.eyes) eye.draw(ctx);
+    // Saturation and lightness blend from white (glow 0) to a bright hue (glow 1).
+    const glow = clamp(this.glow.value, 0, 1);
+    this.eyes.forEach((eye, i) => {
+      const hue = (this.hue + i * HUE_OFFSET) % 360;
+      ctx.fillStyle = `hsl(${hue} ${100 * glow}% ${lerp(100, 62, glow)}%)`;
+      eye.draw(ctx);
+    });
   }
 
   /** Maps a screen point to a gaze direction, easing off toward the edges. */
