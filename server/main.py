@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from agent import Agent
+from agent import AGENT_ID, Agent
 from config import settings
 from db import Database
 from room import Room, user_json
@@ -81,7 +81,8 @@ async def chat_socket(ws: WebSocket) -> None:
 
     client → {"type": "hello", "token": "<saved token or null>"}   (first frame)
     server → {"type": "welcome", "user": {...}, "token": "...", "history": {...},
-              "online": [{...}], "agent": {...} | null}
+              "online": [{...}], "users": [{...}], "agent": {...} | null}
+              (users: everyone who has ever joined, most recently seen first)
     client → {"type": "send", "text": "...", "clientId": "..."}
     server → {"type": "message", "message": {...}, "clientId"?: "..."}   (to everyone)
     server → {"type": "message", "message": {...}}   (the agent's reply, to everyone)
@@ -123,6 +124,7 @@ async def chat_socket(ws: WebSocket) -> None:
                 "token": token,
                 "history": history,
                 "online": [user_json(u) for u in room.online()],
+                "users": [user_json(u) for u in await db.list_users(exclude=AGENT_ID)],
                 "agent": user_json(agent.user) if agent is not None else None,
             }
         )

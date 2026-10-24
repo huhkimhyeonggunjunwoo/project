@@ -56,6 +56,8 @@ export type ServerEvent =
       history: MessagePage
       /** Connected people, in the order they arrived. */
       online: ChatUser[]
+      /** Everyone who has ever joined, most recently seen first. */
+      users: ChatUser[]
       agent: ChatUser | null
     }
   | { type: "presence"; users: ChatUser[] }

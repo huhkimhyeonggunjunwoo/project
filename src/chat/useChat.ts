@@ -35,6 +35,8 @@ interface State {
   agent: ChatUser | null
   /** People connected right now, in the order they arrived. */
   online: ChatUser[]
+  /** Everyone who has ever joined, online or not, most recently seen first. */
+  users: ChatUser[]
   status: ConnectionStatus
   /** Stored messages sorted by id, then this client's pending ones. */
   messages: ChatMessage[]
@@ -45,7 +47,14 @@ interface State {
 
 type Action =
   | { type: "status"; status: ConnectionStatus }
-  | { type: "welcome"; user: ChatUser; history: MessagePage; online: ChatUser[]; agent: ChatUser | null }
+  | {
+      type: "welcome"
+      user: ChatUser
+      history: MessagePage
+      online: ChatUser[]
+      users: ChatUser[]
+      agent: ChatUser | null
+    }
   | { type: "presence"; users: ChatUser[] }
   | { type: "private"; message: PrivateMessage }
   | { type: "rename"; user: ChatUser }
@@ -57,6 +66,7 @@ const initialState: State = {
   me: null,
   agent: null,
   online: [],
+  users: [],
   status: "connecting",
   messages: [],
   privates: [],
@@ -103,6 +113,7 @@ function reducer(state: State, action: Action): State {
         me: action.user,
         agent: action.agent,
         online: action.online,
+        users: action.users,
         status: "open",
         messages: [...(reset ? page : mergeById(stored, page)), ...pending],
         privates: state.privates,
@@ -120,8 +131,17 @@ function reducer(state: State, action: Action): State {
       return { ...state, messages: [...mergeById(stored, [incoming]), ...pending] }
     }
 
-    case "presence":
-      return { ...state, online: action.users }
+    case "presence": {
+      // Whoever just arrived or just left was seen most recently: move them up.
+      const before = new Set(state.online.map((u) => u.id))
+      const now = new Set(action.users.map((u) => u.id))
+      const known = new Set(state.users.map((u) => u.id))
+      const arrived = action.users.filter((u) => !known.has(u.id))
+      const left = state.users.filter((u) => before.has(u.id) && !now.has(u.id))
+      const moved = new Set(left.map((u) => u.id))
+      const rest = state.users.filter((u) => !moved.has(u.id))
+      return { ...state, online: action.users, users: [...arrived, ...left, ...rest] }
+    }
 
     case "rename": {
       const { user } = action
@@ -131,6 +151,7 @@ function reducer(state: State, action: Action): State {
         ...state,
         me: state.me?.id === user.id ? user : state.me,
         online: state.online.map((u) => (u.id === user.id ? user : u)),
+        users: state.users.map((u) => (u.id === user.id ? user : u)),
         messages: state.messages.map(rename),
         privates: state.privates.map(rename),
       }
@@ -225,6 +246,7 @@ export function useChat() {
             user: event.user,
             history: event.history,
             online: event.online,
+            users: event.users,
             agent: event.agent,
           })
           // Resend anything typed while we were offline.

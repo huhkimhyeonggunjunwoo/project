@@ -152,3 +152,13 @@ def test_private_greeting_only_reaches_the_newcomer(client: TestClient) -> None:
         assert "private" not in types
 
     assert client.get("/messages").json()["messages"][0]["text"] == "hi"
+
+
+def test_welcome_lists_everyone_who_ever_joined(client: TestClient) -> None:
+    with client.websocket_connect("/ws", headers=ORIGIN) as ws:
+        gone = hello(ws)["user"]
+    with client.websocket_connect("/ws", headers=ORIGIN) as ws:
+        here = hello(ws)
+    assert here["users"][0] == here["user"]  # most recently seen first
+    assert gone in here["users"]
+    assert all(u["id"] != "agent" for u in here["users"])

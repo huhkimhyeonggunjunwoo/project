@@ -129,6 +129,14 @@ class Database:
         await self.conn.commit()
         return User(id=row["id"], name=row["name"])
 
+    async def list_users(self, exclude: str) -> list[User]:
+        """Everyone who has ever joined, most recently seen first."""
+        async with self.conn.execute(
+            "SELECT id, name FROM users WHERE id != ? ORDER BY last_seen_at DESC, id", (exclude,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [User(id=row["id"], name=row["name"]) for row in rows]
+
     async def rename_user(self, user_id: str, name: str) -> User | None:
         """Renames a user, or returns None if someone else already has that
         name (ignoring case)."""
