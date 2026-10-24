@@ -35,6 +35,8 @@ export interface ServerMessage {
   createdAt: string
   /** Set when this is a record of an agent tool call rather than a chat line. */
   tool?: ToolCall | null
+  /** Agent messages: ids of the people it was answering. */
+  replyTo?: string[] | null
 }
 
 /** A note only this client gets. Not stored, so it has no id. */
@@ -63,11 +65,13 @@ export type ServerEvent =
       agent: ChatUser | null
       /** Whether the agent is working on a reply right now. */
       agentTyping: boolean
+      /** Ids of the people that reply is for. */
+      agentReplyTo: string[]
     }
   | { type: "presence"; users: ChatUser[] }
   | { type: "private"; message: PrivateMessage }
   | { type: "rename"; user: ChatUser }
-  | { type: "typing"; typing: boolean }
+  | { type: "typing"; typing: boolean; replyTo: string[] }
   | { type: "message"; message: ServerMessage; clientId?: string }
   | { type: "error"; message: string }
 

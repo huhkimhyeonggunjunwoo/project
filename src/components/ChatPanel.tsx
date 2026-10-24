@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react"
-import { ArrowRightIcon, EyeOffIcon } from "lucide-react"
+import { ArrowRightIcon, EyeIcon, EyeOffIcon } from "lucide-react"
 
-import type { Chat } from "@/chat/useChat"
+import type { ChatUser } from "@/chat/api"
+import type { Chat, ChatMessage } from "@/chat/useChat"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
+import { Button } from "@/components/ui/button"
 import {
   InputGroup,
   InputGroupAddon,
@@ -25,6 +27,36 @@ import { cn } from "@/lib/utils"
 
 /** How close to the top (px) the history has to be before older pages load. */
 const LOAD_OLDER_THRESHOLD = 48
+
+const HIDE_OTHERS_KEY = "onehouse.hideOthers"
+
+/**
+ * Whether to hide everyone else's conversations, remembered across visits.
+ * This only changes what I see: the room stays public either way.
+ */
+function useHideOthers() {
+  const [hide, setHide] = useState(() => {
+    try {
+      return localStorage.getItem(HIDE_OTHERS_KEY) === "1"
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem(HIDE_OTHERS_KEY, hide ? "1" : "0")
+    } catch {
+      // Private mode etc.: it just isn't remembered.
+    }
+  }, [hide])
+  return [hide, setHide] as const
+}
+
+/** What I still see with others hidden: my messages, notes only I get, and
+ * whatever the agent posted while answering me. */
+function isMine(m: ChatMessage, me: ChatUser | null): boolean {
+  return m.private || (me !== null && (m.userId === me.id || !!m.replyTo?.includes(me.id)))
+}
 
 interface ChatPanelProps {
   chat: Chat
@@ -63,8 +95,12 @@ export function ChatPanel(props: ChatPanelProps) {
 }
 
 function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
-  const { me, agent, agentTyping, status, messages, hasMore, send, loadOlder } = chat
+  const { me, agent, agentTyping, agentReplyTo, status, hasMore, send, loadOlder } = chat
   const [draft, setDraft] = useState("")
+  const [hideOthers, setHideOthers] = useHideOthers()
+  const messages = hideOthers ? chat.messages.filter((m) => isMine(m, me)) : chat.messages
+  // With others hidden, only show the agent typing when it's answering me.
+  const showTyping = agentTyping && (!hideOthers || (me !== null && agentReplyTo.includes(me.id)))
   const { scrollToEnd } = useMessageScroller()
   const viewportRef = useRef<HTMLDivElement>(null)
   const connected = status === "open"
@@ -85,6 +121,9 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
   }, [loadOlder])
 
   // History doesn't fill the area yet (so it can't be scrolled): load more.
+  // Counts every message, not just the shown ones, so with others hidden a
+  // page with nothing of mine still leads on to the next.
+  const loaded = chat.messages.length
   useEffect(() => {
     if (!hasMore) return
     const frame = requestAnimationFrame(() => {
@@ -92,7 +131,7 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
       if (viewport && viewport.scrollHeight <= viewport.clientHeight) void loadOlder()
     })
     return () => cancelAnimationFrame(frame)
-  }, [hasMore, messages.length, loadOlder])
+  }, [hasMore, loaded, loadOlder])
 
   const trackCaret = (input: HTMLInputElement) => {
     if (!onCaretMove) return
@@ -111,7 +150,7 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
   return (
     <div className="pointer-events-none absolute inset-x-0 top-[56%] bottom-0 flex justify-center px-4 pb-[max(1rem,8vh)]">
       <div className="flex min-h-0 w-full max-w-137 flex-col gap-3">
-        {messages.length > 0 && (
+        {loaded > 0 && (
           <MessageScroller className="pointer-events-auto flex-1">
             <MessageScrollerViewport ref={viewportRef} onScroll={onHistoryScroll} className="scroll-fade-18">
               <MessageScrollerContent className="justify-end gap-2.5 px-1 pb-1">
@@ -159,7 +198,7 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
                     </MessageScrollerItem>
                   )
                 })}
-                {agentTyping && (
+                {showTyping && (
                   <MessageScrollerItem key="agent-typing" messageId="agent-typing">
                     <TypingIndicator name={typingFollowsAgent ? undefined : agent?.name} />
                   </MessageScrollerItem>
@@ -197,6 +236,22 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
               </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>
+          <div className="mt-1.5 flex items-center justify-end gap-2 px-1">
+            {hideOthers && (
+              <span className="text-xs text-muted-foreground">Everyone can still see your chats</span>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              aria-pressed={hideOthers}
+              onClick={() => setHideOthers((h) => !h)}
+              className="text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
+            >
+              {hideOthers ? <EyeOffIcon /> : <EyeIcon />}
+              Hide others
+            </Button>
+          </div>
         </form>
       </div>
     </div>

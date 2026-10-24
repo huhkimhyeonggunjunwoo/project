@@ -84,14 +84,17 @@ async def chat_socket(ws: WebSocket) -> None:
 
     client → {"type": "hello", "token": "<saved token or null>"}   (first frame)
     server → {"type": "welcome", "user": {...}, "token": "...", "history": {...},
-              "online": [{...}], "users": [{...}], "agent": {...} | null, "agentTyping": bool}
+              "online": [{...}], "users": [{...}], "agent": {...} | null, "agentTyping": bool,
+              "agentReplyTo": ["<user id>", ...]}
               (users: everyone who has ever joined, most recently seen first)
     client → {"type": "send", "text": "...", "clientId": "..."}
     server → {"type": "message", "message": {...}, "clientId"?: "..."}   (to everyone)
-    server → {"type": "message", "message": {...}}   (the agent's reply, to everyone)
+    server → {"type": "message", "message": {...}}   (the agent's reply, to everyone;
+              its "replyTo" lists the ids of the people it was answering)
     server → {"type": "private", "message": {"key": "...", ...}}   (just this client, not stored)
     server → {"type": "rename", "user": {...}}   (to everyone, when the agent renames someone)
-    server → {"type": "typing", "typing": bool}   (to everyone: the agent started / finished answering)
+    server → {"type": "typing", "typing": bool, "replyTo": [...]}
+              (to everyone: the agent started / finished answering, and whom)
     server → {"type": "presence", "users": [{...}]}   (to everyone, when who's online changes)
     server → {"type": "error", "message": "..."}
     """
@@ -131,6 +134,7 @@ async def chat_socket(ws: WebSocket) -> None:
                 "users": [user_json(u) for u in await db.list_users(exclude=AGENT_ID)],
                 "agent": user_json(agent.user) if agent is not None else None,
                 "agentTyping": agent is not None and agent.typing,
+                "agentReplyTo": agent.reply_to if agent is not None else [],
             }
         )
         if agent is not None:

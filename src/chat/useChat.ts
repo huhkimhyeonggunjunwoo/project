@@ -35,6 +35,8 @@ interface State {
   agent: ChatUser | null
   /** The agent is working on a reply (shown as a typing indicator). */
   agentTyping: boolean
+  /** Ids of the people that reply is for. */
+  agentReplyTo: string[]
   /** People connected right now, in the order they arrived. */
   online: ChatUser[]
   /** Everyone who has ever joined, online or not, most recently seen first. */
@@ -57,9 +59,10 @@ type Action =
       users: ChatUser[]
       agent: ChatUser | null
       agentTyping: boolean
+      agentReplyTo: string[]
     }
   | { type: "presence"; users: ChatUser[] }
-  | { type: "typing"; typing: boolean }
+  | { type: "typing"; typing: boolean; replyTo: string[] }
   | { type: "private"; message: PrivateMessage }
   | { type: "rename"; user: ChatUser }
   | { type: "received"; message: ServerMessage; clientId?: string }
@@ -70,6 +73,7 @@ const initialState: State = {
   me: null,
   agent: null,
   agentTyping: false,
+  agentReplyTo: [],
   online: [],
   users: [],
   status: "connecting",
@@ -103,12 +107,19 @@ function mergeById(...lists: ChatMessage[][]): ChatMessage[] {
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case "status":
+    case "status": {
       // Offline, we can't know whether the agent is still at it.
-      return { ...state, status: action.status, agentTyping: action.status === "open" && state.agentTyping }
+      const open = action.status === "open"
+      return {
+        ...state,
+        status: action.status,
+        agentTyping: open && state.agentTyping,
+        agentReplyTo: open ? state.agentReplyTo : [],
+      }
+    }
 
     case "typing":
-      return { ...state, agentTyping: action.typing }
+      return { ...state, agentTyping: action.typing, agentReplyTo: action.replyTo }
 
     case "welcome": {
       const page = action.history.messages.map((m) => fromServer(m))
@@ -122,6 +133,7 @@ function reducer(state: State, action: Action): State {
         me: action.user,
         agent: action.agent,
         agentTyping: action.agentTyping,
+        agentReplyTo: action.agentReplyTo,
         online: action.online,
         users: action.users,
         status: "open",
@@ -259,13 +271,14 @@ export function useChat() {
             users: event.users,
             agent: event.agent,
             agentTyping: event.agentTyping,
+            agentReplyTo: event.agentReplyTo ?? [],
           })
           // Resend anything typed while we were offline.
           for (const m of stateRef.current.messages) {
             if (m.pending) ws.send(JSON.stringify({ type: "send", text: m.text, clientId: m.key }))
           }
         } else if (event.type === "typing") {
-          dispatch({ type: "typing", typing: event.typing })
+          dispatch({ type: "typing", typing: event.typing, replyTo: event.replyTo ?? [] })
         } else if (event.type === "rename") {
           dispatch({ type: "rename", user: event.user })
         } else if (event.type === "private") {

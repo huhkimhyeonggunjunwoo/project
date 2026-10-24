@@ -61,10 +61,12 @@ def test_agent_reply_reaches_everyone(client: TestClient, monkeypatch: pytest.Mo
             assert answer["userId"] == AGENT_ID
             assert answer["userName"] == "one"
             assert answer["text"] == "hello, everyone"
+            assert answer["replyTo"] == [me["id"]]
 
     assert seen == [[{"role": "user", "content": f"{me['name']}: anyone here?"}]]
     history = client.get("/messages").json()["messages"]
     assert [m["userId"] for m in history] == [me["id"], AGENT_ID]
+    assert [m["replyTo"] for m in history] == [None, [me["id"]]]
 
 
 def test_messages_during_a_reply_are_answered_together(tmp_path: Path) -> None:
@@ -267,18 +269,21 @@ def test_everyone_sees_the_agent_typing_until_it_answers(
     monkeypatch.setattr(Agent, "generate", reply)
 
     with client.websocket_connect("/ws", headers=ORIGIN) as a, client.websocket_connect("/ws", headers=ORIGIN) as b:
-        assert hello(a)["agentTyping"] is False
+        welcome = hello(a)
+        assert welcome["agentTyping"] is False and welcome["agentReplyTo"] == []
+        me = welcome["user"]["id"]
         hello(b)
         a.send_json({"type": "send", "text": "hello?"})
         for ws in (a, b):
             seen = []
-            while not seen or seen[-1] != ("typing", False):
+            while not seen or seen[-1] != ("typing", False, []):
                 frame = ws.receive_json()
                 if frame["type"] == "typing":
-                    seen.append(("typing", frame["typing"]))
+                    # Everyone can tell whom the agent is answering.
+                    seen.append(("typing", frame["typing"], frame["replyTo"]))
                 elif frame["type"] == "message":
                     seen.append(("message", frame["message"]["text"]))
-            assert seen == [("message", "hello?"), ("typing", True), ("message", "hi!"), ("typing", False)]
+            assert seen == [("message", "hello?"), ("typing", True, [me]), ("message", "hi!"), ("typing", False, [])]
 
 
 def test_past_tool_calls_stay_in_the_agents_turns() -> None:

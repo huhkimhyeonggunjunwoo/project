@@ -28,14 +28,16 @@ CREATE TABLE IF NOT EXISTS messages (
     -- Agent replies only: id of the newest message it had read when replying.
     context_id INTEGER,
     -- Agent tool calls only: JSON {name, input, output, isError}.
-    tool       TEXT
+    tool       TEXT,
+    -- Agent messages only: JSON list of the user ids it was answering.
+    reply_to   TEXT
 );
 """
 
 # Columns added after the first release, for databases created before them.
-ADDED_COLUMNS = {"context_id": "INTEGER", "tool": "TEXT"}
+ADDED_COLUMNS = {"context_id": "INTEGER", "tool": "TEXT", "reply_to": "TEXT"}
 
-MESSAGE_COLUMNS = "m.id, m.user_id, u.name, m.text, m.created_at, m.context_id, m.tool"
+MESSAGE_COLUMNS = "m.id, m.user_id, u.name, m.text, m.created_at, m.context_id, m.tool, m.reply_to"
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,7 @@ def _message(row: aiosqlite.Row) -> dict[str, Any]:
         "text": row["text"],
         "createdAt": row["created_at"],
         "tool": json.loads(row["tool"]) if row["tool"] else None,
+        "replyTo": json.loads(row["reply_to"]) if row["reply_to"] else None,
     }
 
 
@@ -155,10 +158,12 @@ class Database:
         text: str,
         context_id: int | None = None,
         tool: dict[str, Any] | None = None,
+        reply_to: list[str] | None = None,
     ) -> dict[str, Any]:
         cursor = await self.conn.execute(
-            "INSERT INTO messages (user_id, text, created_at, context_id, tool) VALUES (?, ?, ?, ?, ?)",
-            (user.id, text, _now(), context_id, json.dumps(tool) if tool else None),
+            "INSERT INTO messages (user_id, text, created_at, context_id, tool, reply_to) VALUES (?, ?, ?, ?, ?, ?)",
+            (user.id, text, _now(), context_id, json.dumps(tool) if tool else None,
+             json.dumps(reply_to) if reply_to is not None else None),
         )
         await self.conn.commit()
         async with self.conn.execute(

@@ -272,8 +272,10 @@ class Agent:
         self._task: asyncio.Task[None] | None = None
         self._memory_task: asyncio.Task[None] | None = None
         self._dirty = False
-        # True from the moment someone speaks until the agent is done answering.
+        # True from the moment the agent starts answering until it's done, and
+        # who it's answering (user ids), so each person can tell if it's them.
         self.typing = False
+        self.reply_to: list[str] = []
 
     def greeting(self, user: User) -> dict[str, Any]:
         """A note only `user` sees when they connect. It isn't stored, so it
@@ -313,7 +315,6 @@ class Agent:
         # The outer loop catches messages that arrive while "done typing" is
         # being sent, so none slip through between two runs.
         while self._dirty:
-            await self._set_typing(True)
             while self._dirty:
                 self._dirty = False
                 try:
@@ -329,9 +330,12 @@ class Agent:
         if self.memory is not None and (self._memory_task is None or self._memory_task.done()):
             self._memory_task = asyncio.create_task(self.memory.catch_up(self.db))
 
-    async def _set_typing(self, typing: bool) -> None:
-        self.typing = typing
-        await self.room.broadcast({"type": "typing", "typing": typing})
+    async def _set_typing(self, typing: bool, reply_to: list[str] | None = None) -> None:
+        reply_to = reply_to or []
+        if (typing, reply_to) == (self.typing, self.reply_to):
+            return
+        self.typing, self.reply_to = typing, reply_to
+        await self.room.broadcast({"type": "typing", "typing": typing, "replyTo": reply_to})
 
     async def _reply(self) -> None:
         history = await self.db.recent_context(self.context_messages)
@@ -342,6 +346,9 @@ class Agent:
         context_id = history[-1]["id"]
         # Only people waiting on this reply can be acted on (by id -> current name).
         speakers = {m["userId"]: m["userName"] for m in new}
+        # Everything this reply posts is marked as answering them.
+        reply_to = list(speakers)
+        await self._set_typing(True, reply_to)
 
         messages = list(turns)
         for _ in range(MAX_STEPS):
@@ -349,12 +356,12 @@ class Agent:
             if response is None:
                 return
             for call in web_tool_calls(response.content):
-                await self._post(call["output"], context_id, tool=call)
+                await self._post(call["output"], context_id, reply_to, tool=call)
             text = "".join(block.text for block in response.content if block.type == "text")
             # Records come from the server only; drop any the model imitated.
             text = TOOL_RECORD.sub("", text).strip()
             if text:
-                await self._post(text, context_id)
+                await self._post(text, context_id, reply_to)
 
             if response.stop_reason == "pause_turn":
                 # A long server-side turn (e.g. several searches) was paused:
@@ -378,6 +385,7 @@ class Agent:
                 await self._post(
                     output,
                     context_id,
+                    reply_to,
                     tool={"name": block.name, "input": block.input, "output": output, "isError": is_error},
                 )
                 results.append(
@@ -386,8 +394,8 @@ class Agent:
             messages.append({"role": "user", "content": results})
         log.warning("Agent stopped after %d steps without finishing", MAX_STEPS)
 
-    async def _post(self, text: str, context_id: int, tool: dict[str, Any] | None = None) -> None:
-        message = await self.db.add_message(self.user, text, context_id=context_id, tool=tool)
+    async def _post(self, text: str, context_id: int, reply_to: list[str], tool: dict[str, Any] | None = None) -> None:
+        message = await self.db.add_message(self.user, text, context_id=context_id, reply_to=reply_to, tool=tool)
         await self.room.broadcast({"type": "message", "message": message})
 
     async def _run_tool(self, name: str, args: Any, speakers: dict[str, str]) -> tuple[str, bool]:
