@@ -57,6 +57,20 @@
         0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
         30% { opacity: 1; transform: translateY(-3px); }
     }
+
+    /* A new chat message: the list makes room for it while the bubble rises
+       from its corner, grows with a little spring and comes into focus. */
+    --animate-message-in: message-in 280ms cubic-bezier(0.2, 0, 0, 1) both;
+    @keyframes message-in {
+        from { grid-template-rows: 0fr; }
+        to { grid-template-rows: 1fr; }
+    }
+    --animate-bubble-in: bubble-in 520ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+    @keyframes bubble-in {
+        from { opacity: 0; transform: translateY(14px) scale(0.86); filter: blur(6px); }
+        50% { opacity: 1; filter: blur(0); }
+        to { opacity: 1; transform: none; filter: none; }
+    }
 }
 
 :root {

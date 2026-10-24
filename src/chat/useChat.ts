@@ -22,6 +22,8 @@ export interface ChatMessage extends Omit<ServerMessage, "id"> {
   pending: boolean
   /** Only visible to me; never stored on the server. */
   private: boolean
+  /** Arrived while I'm here, rather than loaded as history: animated in. */
+  live?: boolean
 }
 
 interface PrivateNote extends ChatMessage {
@@ -149,7 +151,7 @@ function reducer(state: State, action: Action): State {
       const { stored, pending } = split(
         matched ? state.messages.filter((m) => m.key !== clientId) : state.messages
       )
-      const incoming = fromServer(action.message, matched ? clientId : undefined)
+      const incoming = { ...fromServer(action.message, matched ? clientId : undefined), live: true }
       return { ...state, messages: [...mergeById(stored, [incoming]), ...pending] }
     }
 
@@ -183,7 +185,7 @@ function reducer(state: State, action: Action): State {
       const key = `p-${action.message.key}`
       if (state.privates.some((p) => p.key === key)) return state
       const afterId = split(state.messages).stored.at(-1)?.id ?? 0
-      const note: PrivateNote = { ...action.message, key, id: null, pending: false, private: true, afterId }
+      const note: PrivateNote = { ...action.message, key, id: null, pending: false, private: true, live: true, afterId }
       return { ...state, privates: [...state.privates, note] }
     }
 
@@ -333,6 +335,7 @@ export function useChat() {
         createdAt: new Date().toISOString(),
         pending: true,
         private: false,
+        live: true,
       },
     })
     ws.send(JSON.stringify({ type: "send", text, clientId: key }))

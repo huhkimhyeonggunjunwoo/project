@@ -88,16 +88,34 @@ you to remember something, you will.
 How to reply:
 - Speak as yourself, in the first person. Never start your reply with a name \
 prefix like "{name}:".
+- Reply the way people text: two to four short messages in a row, never just \
+one. Separate them with a blank line; each becomes its own chat bubble, sent \
+one after another. Each is one or two sentences, and the whole reply stays short.
 - When more than one person is waiting on you, answer them together in one \
-message and address each by name so they know which part is theirs. With just \
+reply and address each by name so they know which part is theirs. With just \
 one person, there's no need to keep repeating their name.
 - Answer in the language the person used.
-- This is a chat bubble: keep it short and conversational, usually one to three \
-sentences. Plain text only, no Markdown.\
+- Plain text only, no Markdown.\
 """
 
 # Marks past tool calls inside the agent's own turns (see the prompt above).
 TOOL_RECORD = re.compile(r"<tool_record>.*?</tool_record>\s*", re.DOTALL)
+SENTENCE_END = re.compile(r"(?<=[.!?。！？])\s+")
+# Seconds between the messages of one reply, so they arrive one after another.
+PAUSE_BETWEEN_MESSAGES = 0.8
+
+
+def chat_messages(text: str) -> list[str]:
+    """A reply as the chat messages to send: the parts the model separated
+    with blank lines. If it wrote just one, it's split in two between
+    sentences (a single sentence stays as it is)."""
+    parts = [part.strip() for part in re.split(r"\n\s*\n", text) if part.strip()]
+    if len(parts) == 1:
+        sentences = SENTENCE_END.split(parts[0])
+        if len(sentences) > 1:
+            half = (len(sentences) + 1) // 2
+            parts = [" ".join(sentences[:half]), " ".join(sentences[half:])]
+    return parts
 
 
 def tool_record(tool: dict[str, Any]) -> str:
@@ -248,7 +266,9 @@ def to_turns(history: list[dict[str, Any]]) -> list[BetaMessageParam]:
         else:
             role, text = "user", f"{m['userName']}: {m['text']}"
         if turns and turns[-1]["role"] == role:
-            turns[-1]["content"] += "\n" + text  # type: ignore[operator]
+            # The agent's messages in a row read back as it wrote them: one
+            # reply, with a blank line between its messages.
+            turns[-1]["content"] += ("\n\n" if role == "assistant" else "\n") + text  # type: ignore[operator]
         else:
             turns.append({"role": role, "content": text})
     # The conversation has to open with a user turn.
@@ -377,8 +397,10 @@ class Agent:
             text = "".join(block.text for block in response.content if block.type == "text")
             # Records come from the server only; drop any the model imitated.
             text = TOOL_RECORD.sub("", text).strip()
-            if text:
-                await self._post(text, context_id, reply_to)
+            for i, part in enumerate(chat_messages(text)):
+                if i:
+                    await asyncio.sleep(PAUSE_BETWEEN_MESSAGES)
+                await self._post(part, context_id, reply_to)
 
             if response.stop_reason == "pause_turn":
                 # A long server-side turn (e.g. several searches) was paused:

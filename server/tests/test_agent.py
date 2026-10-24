@@ -295,7 +295,7 @@ def test_past_tool_calls_stay_in_the_agents_turns() -> None:
     ]
     assert to_turns(history)[1] == {
         "role": "assistant",
-        "content": '<tool_record>web_fetch {"url": "https://x.dev"} -> Opened X</tool_record>\nIt\'s a dev blog.',
+        "content": '<tool_record>web_fetch {"url": "https://x.dev"} -> Opened X</tool_record>\n\nIt\'s a dev blog.',
     }
 
 
@@ -332,3 +332,33 @@ def test_agent_lists_everyone_offline_included(tmp_path: Path) -> None:
     assert lines[1].startswith("Offline: anon-") and "(last seen " in lines[1]
     assert lines[2] == "From documents you were given (never in the room): 민수"
     assert not any("one" in line.split(": ", 1)[1].split(", ") for line in lines)
+
+
+def test_replies_go_out_as_several_messages() -> None:
+    from agent import chat_messages
+
+    assert chat_messages("안녕하세요!\n\n오늘 뭐 만들어요?\n \n저는 one이에요.") == [
+        "안녕하세요!", "오늘 뭐 만들어요?", "저는 one이에요."
+    ]
+    # Written as one: split between sentences, into two.
+    assert chat_messages("Hi there. Nice to meet you! What are you building?") == [
+        "Hi there. Nice to meet you!", "What are you building?"
+    ]
+    assert chat_messages("Hi!") == ["Hi!"]
+    assert chat_messages("  ") == []
+
+
+def test_split_messages_arrive_in_a_row(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    import agent
+
+    async def reply(self: Agent, messages: list) -> SimpleNamespace:
+        return said("Hi!\n\nWhat's up?")
+
+    monkeypatch.setattr(Agent, "generate", reply)
+    monkeypatch.setattr(agent, "PAUSE_BETWEEN_MESSAGES", 0)
+    with client.websocket_connect("/ws", headers=ORIGIN) as ws:
+        hello(ws)
+        ws.send_json({"type": "send", "text": "yo"})
+        receive(ws)
+        assert receive(ws)["message"]["text"] == "Hi!"
+        assert receive(ws)["message"]["text"] == "What's up?"

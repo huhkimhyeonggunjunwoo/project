@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { ArrowRightIcon, EyeIcon, EyeOffIcon } from "lucide-react"
 
 import type { ChatUser } from "@/chat/api"
@@ -50,6 +50,27 @@ function useHideOthers() {
     }
   }, [hide])
   return [hide, setHide] as const
+}
+
+/**
+ * Animates a message in when it arrives live (sent or received while I'm
+ * here): earlier messages slide up to make room, and the bubble springs up
+ * from its corner. History loads in place, without the animation.
+ */
+function Arrival({ live, align, children }: { live?: boolean; align: "start" | "end"; children: ReactNode }) {
+  if (!live) return children
+  return (
+    <div className="grid motion-safe:animate-message-in">
+      <div
+        className={cn(
+          "min-h-0 motion-safe:animate-bubble-in",
+          align === "end" ? "origin-bottom-right" : "origin-bottom-left"
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  )
 }
 
 /** What I still see with others hidden: my messages, notes only I get, and
@@ -162,45 +183,52 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
                   if (m.tool) {
                     return (
                       <MessageScrollerItem key={m.key} messageId={m.key}>
-                        <Message>
-                          <ToolCallMarker tool={m.tool} />
-                        </Message>
+                        <Arrival live={m.live} align="start">
+                          <Message>
+                            <ToolCallMarker tool={m.tool} />
+                          </Message>
+                        </Arrival>
                       </MessageScrollerItem>
                     )
                   }
                   return (
                     <MessageScrollerItem key={m.key} messageId={m.key}>
-                      <Message align={mine ? "end" : "start"}>
-                        <MessageContent className="gap-1">
-                          {showName && <MessageHeader>{m.userName}</MessageHeader>}
-                          {m.private && (
-                            <MessageHeader className="gap-1">
-                              <EyeOffIcon className="size-3" />
-                              Only visible to you
-                            </MessageHeader>
-                          )}
-                          <Bubble
-                            variant={mine || m.private ? "default" : "secondary"}
-                            className={cn(
-                              // My messages: white bubble with dark text.
-                              mine && "[--primary:oklch(1_0_0)] [--primary-foreground:oklch(0.145_0_0)]",
-                              // Only-me notes: yellow bubble with dark text.
-                              m.private && "[--primary:oklch(0.852_0.199_91.936)] [--primary-foreground:oklch(0.145_0_0)]",
-                              m.pending && "opacity-60"
+                      <Arrival live={m.live} align={mine ? "end" : "start"}>
+                        <Message align={mine ? "end" : "start"}>
+                          <MessageContent className="gap-1">
+                            {showName && <MessageHeader>{m.userName}</MessageHeader>}
+                            {m.private && (
+                              <MessageHeader className="gap-1">
+                                <EyeOffIcon className="size-3" />
+                                Only visible to you
+                              </MessageHeader>
                             )}
-                          >
-                            <BubbleContent className="rounded-2xl px-4 py-2 text-[15px]">
-                              {m.text}
-                            </BubbleContent>
-                          </Bubble>
-                        </MessageContent>
-                      </Message>
+                            <Bubble
+                              variant={mine || m.private ? "default" : "secondary"}
+                              className={cn(
+                                "transition-opacity duration-300",
+                                // My messages: white bubble with dark text.
+                                mine && "[--primary:oklch(1_0_0)] [--primary-foreground:oklch(0.145_0_0)]",
+                                // Only-me notes: yellow bubble with dark text.
+                                m.private && "[--primary:oklch(0.852_0.199_91.936)] [--primary-foreground:oklch(0.145_0_0)]",
+                                m.pending && "opacity-60"
+                              )}
+                            >
+                              <BubbleContent className="rounded-2xl px-4 py-2 text-[15px]">
+                                {m.text}
+                              </BubbleContent>
+                            </Bubble>
+                          </MessageContent>
+                        </Message>
+                      </Arrival>
                     </MessageScrollerItem>
                   )
                 })}
                 {showTyping && (
                   <MessageScrollerItem key="agent-typing" messageId="agent-typing">
-                    <TypingIndicator name={typingFollowsAgent ? undefined : agent?.name} />
+                    <Arrival live align="start">
+                      <TypingIndicator name={typingFollowsAgent ? undefined : agent?.name} />
+                    </Arrival>
                   </MessageScrollerItem>
                 )}
               </MessageScrollerContent>
