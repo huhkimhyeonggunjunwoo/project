@@ -48,6 +48,7 @@ type Action =
   | { type: "welcome"; user: ChatUser; history: MessagePage; online: ChatUser[]; agent: ChatUser | null }
   | { type: "presence"; users: ChatUser[] }
   | { type: "private"; message: PrivateMessage }
+  | { type: "rename"; user: ChatUser }
   | { type: "received"; message: ServerMessage; clientId?: string }
   | { type: "pending"; message: ChatMessage }
   | { type: "older"; page: MessagePage }
@@ -121,6 +122,19 @@ function reducer(state: State, action: Action): State {
 
     case "presence":
       return { ...state, online: action.users }
+
+    case "rename": {
+      const { user } = action
+      const rename = <T extends { userId: string; userName: string }>(m: T): T =>
+        m.userId === user.id ? { ...m, userName: user.name } : m
+      return {
+        ...state,
+        me: state.me?.id === user.id ? user : state.me,
+        online: state.online.map((u) => (u.id === user.id ? user : u)),
+        messages: state.messages.map(rename),
+        privates: state.privates.map(rename),
+      }
+    }
 
     case "private": {
       const key = `p-${action.message.key}`
@@ -217,6 +231,8 @@ export function useChat() {
           for (const m of stateRef.current.messages) {
             if (m.pending) ws.send(JSON.stringify({ type: "send", text: m.text, clientId: m.key }))
           }
+        } else if (event.type === "rename") {
+          dispatch({ type: "rename", user: event.user })
         } else if (event.type === "private") {
           dispatch({ type: "private", message: event.message })
         } else if (event.type === "presence") {

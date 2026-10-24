@@ -86,6 +86,7 @@ async def chat_socket(ws: WebSocket) -> None:
     server → {"type": "message", "message": {...}, "clientId"?: "..."}   (to everyone)
     server → {"type": "message", "message": {...}}   (the agent's reply, to everyone)
     server → {"type": "private", "message": {"key": "...", ...}}   (just this client, not stored)
+    server → {"type": "rename", "user": {...}}   (to everyone, when the agent renames someone)
     server → {"type": "presence", "users": [{...}]}   (to everyone, when who's online changes)
     server → {"type": "error", "message": "..."}
     """

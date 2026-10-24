@@ -1,6 +1,7 @@
 """SQLite storage for anonymous users and the shared chat history."""
 
 import hashlib
+import json
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -25,9 +26,16 @@ CREATE TABLE IF NOT EXISTS messages (
     text       TEXT NOT NULL,
     created_at TEXT NOT NULL,
     -- Agent replies only: id of the newest message it had read when replying.
-    context_id INTEGER
+    context_id INTEGER,
+    -- Agent tool calls only: JSON {name, input, output, isError}.
+    tool       TEXT
 );
 """
+
+# Columns added after the first release, for databases created before them.
+ADDED_COLUMNS = {"context_id": "INTEGER", "tool": "TEXT"}
+
+MESSAGE_COLUMNS = "m.id, m.user_id, u.name, m.text, m.created_at, m.context_id, m.tool"
 
 
 @dataclass(frozen=True)
@@ -51,6 +59,7 @@ def _message(row: aiosqlite.Row) -> dict[str, Any]:
         "userName": row["name"],
         "text": row["text"],
         "createdAt": row["created_at"],
+        "tool": json.loads(row["tool"]) if row["tool"] else None,
     }
 
 
@@ -74,8 +83,9 @@ class Database:
         await self._conn.executescript(SCHEMA)
         async with self._conn.execute("PRAGMA table_info(messages)") as cursor:
             columns = {row["name"] for row in await cursor.fetchall()}
-        if "context_id" not in columns:
-            await self._conn.execute("ALTER TABLE messages ADD COLUMN context_id INTEGER")
+        for column, kind in ADDED_COLUMNS.items():
+            if column not in columns:
+                await self._conn.execute(f"ALTER TABLE messages ADD COLUMN {column} {kind}")
         await self._conn.commit()
 
     async def close(self) -> None:
@@ -119,14 +129,32 @@ class Database:
         await self.conn.commit()
         return User(id=row["id"], name=row["name"])
 
-    async def add_message(self, user: User, text: str, context_id: int | None = None) -> dict[str, Any]:
+    async def rename_user(self, user_id: str, name: str) -> User | None:
+        """Renames a user, or returns None if someone else already has that
+        name (ignoring case)."""
+        async with self.conn.execute(
+            "SELECT 1 FROM users WHERE lower(name) = lower(?) AND id != ?", (name, user_id)
+        ) as cursor:
+            if await cursor.fetchone() is not None:
+                return None
+        await self.conn.execute("UPDATE users SET name = ? WHERE id = ?", (name, user_id))
+        await self.conn.commit()
+        return User(id=user_id, name=name)
+
+    async def add_message(
+        self,
+        user: User,
+        text: str,
+        context_id: int | None = None,
+        tool: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         cursor = await self.conn.execute(
-            "INSERT INTO messages (user_id, text, created_at, context_id) VALUES (?, ?, ?, ?)",
-            (user.id, text, _now(), context_id),
+            "INSERT INTO messages (user_id, text, created_at, context_id, tool) VALUES (?, ?, ?, ?, ?)",
+            (user.id, text, _now(), context_id, json.dumps(tool) if tool else None),
         )
         await self.conn.commit()
         async with self.conn.execute(
-            "SELECT m.id, m.user_id, u.name, m.text, m.created_at"
+            f"SELECT {MESSAGE_COLUMNS}"
             " FROM messages m JOIN users u ON u.id = m.user_id WHERE m.id = ?",
             (cursor.lastrowid,),
         ) as rows:
@@ -138,7 +166,7 @@ class Database:
         """Newest `limit` messages older than `before` (or the newest overall),
         returned oldest-first, plus whether anything older remains."""
         async with self.conn.execute(
-            "SELECT m.id, m.user_id, u.name, m.text, m.created_at"
+            f"SELECT {MESSAGE_COLUMNS}"
             " FROM messages m JOIN users u ON u.id = m.user_id"
             " WHERE (:before IS NULL OR m.id < :before)"
             " ORDER BY m.id DESC LIMIT :limit",
@@ -154,7 +182,7 @@ class Database:
         """The newest `limit` messages, oldest first, with each agent reply's
         context_id (what the agent had read when it wrote it)."""
         async with self.conn.execute(
-            "SELECT m.id, m.user_id, u.name, m.text, m.created_at, m.context_id"
+            f"SELECT {MESSAGE_COLUMNS}"
             " FROM messages m JOIN users u ON u.id = m.user_id"
             " ORDER BY m.id DESC LIMIT ?",
             (limit,),

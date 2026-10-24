@@ -26,6 +26,14 @@ class Room:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    async def rename(self, user: User) -> None:
+        """Someone's name changed: update their sockets and tell everyone."""
+        for ws, existing in list(self._sockets.items()):
+            if existing.id == user.id:
+                self._sockets[ws] = user
+        await self.broadcast({"type": "rename", "user": user_json(user)})
+        await self.sync_presence()
+
     def online(self) -> list[User]:
         """Connected users in the order they arrived, once each (a user can
         have several tabs open)."""

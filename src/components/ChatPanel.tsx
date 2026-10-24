@@ -19,6 +19,7 @@ import {
   MessageScrollerViewport,
   useMessageScroller,
 } from "@/components/ui/message-scroller"
+import { ToolCallMarker } from "@/components/ToolCallMarker"
 import { cn } from "@/lib/utils"
 
 /** How close to the top (px) the history has to be before older pages load. */
@@ -113,7 +114,17 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
                 {messages.map((m, i) => {
                   const mine = m.userId === me?.id
                   const prev = messages[i - 1]
-                  const showName = !mine && !m.private && (prev?.userId !== m.userId || prev.private)
+                  const showName =
+                    !mine && !m.private && !m.tool && (prev?.userId !== m.userId || prev.private || !!prev.tool)
+                  if (m.tool) {
+                    return (
+                      <MessageScrollerItem key={m.key} messageId={m.key}>
+                        <Message>
+                          <ToolCallMarker tool={m.tool} />
+                        </Message>
+                      </MessageScrollerItem>
+                    )
+                  }
                   return (
                     <MessageScrollerItem key={m.key} messageId={m.key}>
                       <Message align={mine ? "end" : "start"}>

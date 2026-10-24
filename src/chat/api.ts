@@ -16,12 +16,23 @@ export interface ChatUser {
   name: string
 }
 
+/** Something the agent did, posted to the room so everyone can see it. */
+export interface ToolCall {
+  name: string
+  input: Record<string, unknown>
+  /** What happened, in words. */
+  output: string
+  isError: boolean
+}
+
 export interface ServerMessage {
   id: number
   userId: string
   userName: string
   text: string
   createdAt: string
+  /** Set when this is a record of an agent tool call rather than a chat line. */
+  tool?: ToolCall | null
 }
 
 /** A note only this client gets. Not stored, so it has no id. */
@@ -49,6 +60,7 @@ export type ServerEvent =
     }
   | { type: "presence"; users: ChatUser[] }
   | { type: "private"; message: PrivateMessage }
+  | { type: "rename"; user: ChatUser }
   | { type: "message"; message: ServerMessage; clientId?: string }
   | { type: "error"; message: string }
 

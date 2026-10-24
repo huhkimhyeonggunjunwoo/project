@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +9,17 @@ from agent import AGENT_ID, Agent, to_turns, unanswered
 from db import Database
 from room import Room
 from test_chat import ORIGIN, client, hello, receive  # noqa: F401  (fixture)
+
+
+def said(text: str) -> SimpleNamespace:
+    """A fake model step that just replies."""
+    return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=text)])
+
+
+def calls_tool(name: str, **args: str) -> SimpleNamespace:
+    """A fake model step that calls one tool."""
+    block = SimpleNamespace(type="tool_use", id="toolu_1", name=name, input=args)
+    return SimpleNamespace(stop_reason="tool_use", content=[block])
 
 
 def test_history_becomes_named_turns() -> None:
@@ -31,9 +43,9 @@ def test_history_becomes_named_turns() -> None:
 def test_agent_reply_reaches_everyone(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[list] = []
 
-    async def reply(self: Agent, turns: list) -> str:
-        seen.append(turns)
-        return "hello, everyone"
+    async def reply(self: Agent, turns: list) -> SimpleNamespace:
+        seen.append(list(turns))
+        return said("hello, everyone")
 
     monkeypatch.setattr(Agent, "generate", reply)
 
@@ -67,11 +79,11 @@ def test_messages_during_a_reply_are_answered_together(tmp_path: Path) -> None:
         calls: list[list] = []
         gate = asyncio.Event()
 
-        async def generate(turns: list) -> str:
-            calls.append(turns)
+        async def generate(turns: list) -> SimpleNamespace:
+            calls.append(list(turns))
             if len(calls) == 1:
                 await gate.wait()
-            return f"reply {len(calls)}"
+            return said(f"reply {len(calls)}")
 
         agent.generate = generate  # type: ignore[method-assign]
 
@@ -98,3 +110,72 @@ def test_messages_during_a_reply_are_answered_together(tmp_path: Path) -> None:
     assert [t["role"] for t in calls[1]] == ["user", "assistant", "user"]
     assert calls[1][1]["content"] == "reply 1"
     assert calls[1][2]["content"].endswith(": second\n" + calls[1][0]["content"].split(":")[0] + ": third")
+
+
+def test_agent_renames_whoever_asks(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    steps: list[list] = []
+
+    async def step(self: Agent, messages: list) -> SimpleNamespace:
+        steps.append(list(messages))
+        if len(steps) == 1:
+            speaker = messages[-1]["content"].split(":")[0]
+            return calls_tool("rename_user", current_name=speaker, new_name="  Jun  ")
+        return said("Done, Jun!")
+
+    monkeypatch.setattr(Agent, "generate", step)
+
+    with client.websocket_connect("/ws", headers=ORIGIN) as a, client.websocket_connect("/ws", headers=ORIGIN) as b:
+        first = hello(a)
+        me = first["user"]
+        hello(b)
+        a.send_json({"type": "send", "text": "change my name to Jun"})
+        assert receive(b)["message"]["userName"] == me["name"]
+
+        renamed = receive(b)
+        assert renamed == {"type": "rename", "user": {"id": me["id"], "name": "Jun"}}
+        tool = receive(b)["message"]
+        assert tool["userId"] == AGENT_ID
+        assert tool["tool"] == {
+            "name": "rename_user",
+            "input": {"current_name": me["name"], "new_name": "  Jun  "},
+            "output": f"Renamed {me['name']} to Jun.",
+            "isError": False,
+        }
+        assert receive(b)["message"]["text"] == "Done, Jun!"
+
+    # The model got its tool result back before writing the final reply.
+    result = steps[1][-1]["content"][0]
+    assert result["tool_use_id"] == "toolu_1" and result["is_error"] is False
+
+    # Stored for good: history and the next visit use the new name.
+    history = client.get("/messages").json()["messages"]
+    assert history[0]["userName"] == "Jun"
+    with client.websocket_connect("/ws", headers=ORIGIN) as a:
+        assert hello(a, first["token"])["user"]["name"] == "Jun"
+
+
+def test_rename_is_limited_to_people_who_just_asked(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        db = Database(tmp_path / "test.db")
+        await db.connect()
+        agent = Agent(db, Room(), name="one", model="test", context_messages=50)
+        await agent.start()
+        alice, _ = await db.create_user()
+        bob, _ = await db.create_user()
+        speakers = {alice.id: alice.name}
+
+        async def rename(current: str, new: str) -> tuple[str, bool]:
+            return await agent._run_tool("rename_user", {"current_name": current, "new_name": new}, speakers)
+
+        assert (await rename(bob.name, "Bobby"))[1] is True  # bob didn't ask
+        assert (await rename(alice.name, "one"))[1] is True  # taken (the agent)
+        assert (await rename(alice.name, "x" * 25))[1] is True
+        assert (await rename(alice.name, "\n\t"))[1] is True
+        assert await rename(alice.name.upper(), "Alice") == (f"Renamed {alice.name.upper()} to Alice.", False)
+        assert speakers[alice.id] == "Alice"
+        assert (await rename("Alice", "alice"))[1] is False  # her own name, new casing
+
+        await agent.close()
+        await db.close()
+
+    asyncio.run(scenario())
