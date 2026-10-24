@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "server": "uv run --directory server fastapi dev main.py",
     "server:prod": "uv run --directory server --env-file .env.production fastapi run main.py",
+    "server:reset": "uv run --directory server python reset_db.py",
     "test:server": "uv run --directory server pytest"
   },
   "devDependencies": {
