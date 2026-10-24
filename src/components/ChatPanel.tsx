@@ -255,16 +255,15 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
     if (text && sendText(text)) setDraft("");
   };
 
-  // While I'm typing, the history grows up toward the eyes (still clear of
-  // them) so there's more to read back; sending clears the draft and it
-  // settles back down.
+  // While I'm typing, the history grows up over the eyes so there's more to
+  // read back; sending clears the draft and it settles back down.
   const composing = draft.length > 0;
 
   return (
     <div
       className={cn(
         "pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-4 pb-[max(1rem,8vh)] transition-[top] duration-500 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none md:pb-8",
-        composing ? "top-[48%]" : "top-[56%]",
+        composing ? "top-[30%]" : "top-[56%]",
       )}
     >
       <div className="flex min-h-0 w-full max-w-137 flex-col gap-3">
