@@ -269,7 +269,7 @@ function ChatPanelBody({
   return (
     <div
       className={cn(
-        "pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-4 pb-[max(1rem,8vh)] transition-[top] duration-500 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none md:pb-8",
+        "pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] transition-[top] duration-500 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none md:pb-8",
         composing ? "top-[30%]" : "top-[56%]",
       )}
     >
