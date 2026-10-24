@@ -109,7 +109,7 @@ function PeopleList(props: PeopleProps) {
 export function PeopleSidebar(props: PeopleProps & { className?: string }) {
   return (
     <aside className={cn("pointer-events-none flex w-56 flex-col", props.className)}>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 *:pointer-events-auto">
+      <div className="min-h-0 flex-1 scrollbar-thin overflow-y-auto px-2 py-2 *:pointer-events-auto">
         <PeopleList {...props} />
       </div>
     </aside>
@@ -135,7 +135,7 @@ export function PeopleDialogButton(props: PeopleProps) {
             {online} online · {offline} offline
           </DialogDescription>
         </DialogHeader>
-        <div className="-mx-2 max-h-[60vh] overflow-y-auto">
+        <div className="-mx-2 max-h-[60vh] scrollbar-thin overflow-y-auto">
           <PeopleList {...props} />
         </div>
       </DialogContent>
