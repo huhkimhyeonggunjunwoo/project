@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } 
 import {
   fetchMessagesBefore,
   wsUrl,
+  type AgentHints,
   type ChatUser,
   type MessagePage,
   type PrivateMessage,
@@ -39,6 +40,8 @@ interface State {
   agentTyping: boolean
   /** Ids of the people that reply is for. */
   agentReplyTo: string[]
+  /** Suggested next messages for me, under one of the agent's replies. */
+  hints: AgentHints | null
   /** People connected right now, in the order they arrived. */
   online: ChatUser[]
   /** Everyone who has ever joined, online or not, most recently seen first. */
@@ -62,9 +65,11 @@ type Action =
       agent: ChatUser | null
       agentTyping: boolean
       agentReplyTo: string[]
+      hints: AgentHints | null
     }
   | { type: "presence"; users: ChatUser[] }
   | { type: "typing"; typing: boolean; replyTo: string[] }
+  | { type: "hints"; hints: AgentHints }
   | { type: "private"; message: PrivateMessage }
   | { type: "rename"; user: ChatUser }
   | { type: "received"; message: ServerMessage; clientId?: string }
@@ -76,6 +81,7 @@ const initialState: State = {
   agent: null,
   agentTyping: false,
   agentReplyTo: [],
+  hints: null,
   online: [],
   users: [],
   status: "connecting",
@@ -123,6 +129,9 @@ function reducer(state: State, action: Action): State {
     case "typing":
       return { ...state, agentTyping: action.typing, agentReplyTo: action.replyTo }
 
+    case "hints":
+      return { ...state, hints: action.hints }
+
     case "welcome": {
       const page = action.history.messages.map((m) => fromServer(m))
       const { stored, pending } = split(state.messages)
@@ -136,6 +145,7 @@ function reducer(state: State, action: Action): State {
         agent: action.agent,
         agentTyping: action.agentTyping,
         agentReplyTo: action.agentReplyTo,
+        hints: action.hints,
         online: action.online,
         users: action.users,
         status: "open",
@@ -274,6 +284,7 @@ export function useChat() {
             agent: event.agent,
             agentTyping: event.agentTyping,
             agentReplyTo: event.agentReplyTo ?? [],
+            hints: event.hints ?? null,
           })
           // Resend anything typed while we were offline.
           for (const m of stateRef.current.messages) {
@@ -281,6 +292,8 @@ export function useChat() {
           }
         } else if (event.type === "typing") {
           dispatch({ type: "typing", typing: event.typing, replyTo: event.replyTo ?? [] })
+        } else if (event.type === "hints") {
+          dispatch({ type: "hints", hints: { messageId: event.messageId, hints: event.hints } })
         } else if (event.type === "rename") {
           dispatch({ type: "rename", user: event.user })
         } else if (event.type === "private") {

@@ -10,7 +10,8 @@ been in the room and reading its own notes (run here), and searching the web and
 server-side). Each tool call is posted to the room so everyone sees what it did.
 
 It only reads the latest messages; older ones live on in its memory, a wiki
-it compiles from the room in the background (see memory.py).
+it compiles from the room in the background (see memory.py). After each
+reply, the people it answered get a few suggested next messages (hints.py).
 """
 
 import asyncio
@@ -33,7 +34,10 @@ from anthropic.types.beta import (
 )
 
 from db import Database, User
-from memory import Memory, Wiki
+from hints import SCHEMA as HINT_SCHEMA
+from hints import parse as parse_hints
+from hints import prompt as hint_prompt
+from memory import Memory, Wiki, transcript
 from room import Room
 
 log = logging.getLogger(__name__)
@@ -129,6 +133,8 @@ MAX_NAME_LENGTH = 24
 MAX_STEPS = 6
 # Most people list_people returns, most recently seen first.
 MAX_PEOPLE = 200
+# How many of the latest messages the hint writer reads.
+HINT_CONTEXT_MESSAGES = 20
 
 RENAME_TOOL: BetaToolParam = {
     "name": "rename_user",
@@ -308,6 +314,11 @@ class Agent:
         )
         self._task: asyncio.Task[None] | None = None
         self._memory_task: asyncio.Task[None] | None = None
+        self._hint_task: asyncio.Task[None] | None = None
+        # The last message a reply posted, and whom it answered (id -> name).
+        self._answered: tuple[dict[str, Any], dict[str, str]] | None = None
+        # The latest hints: {"messageId", "for": [user ids], "hints": [...]}.
+        self.hints: dict[str, Any] | None = None
         self._dirty = False
         # True from the moment the agent starts answering until it's done, and
         # who it's answering (user ids), so each person can tell if it's them.
@@ -333,7 +344,7 @@ class Agent:
         await self.db.ensure_user(self.user)
 
     async def close(self) -> None:
-        for task in (self._task, self._memory_task):
+        for task in (self._task, self._memory_task, self._hint_task):
             if task is not None:
                 task.cancel()
                 try:
@@ -360,6 +371,33 @@ class Agent:
                     log.exception("Agent reply failed")
             await self._set_typing(False)
             self._remember()
+            self._suggest()
+
+    def _suggest(self) -> None:
+        """Writes hints for the people just answered, in the background."""
+        if self._answered is None:
+            return
+        message, names = self._answered
+        self._answered = None
+        if self._hint_task is not None:
+            self._hint_task.cancel()
+        self._hint_task = asyncio.create_task(self._send_hints(message, names))
+
+    async def _send_hints(self, message: dict[str, Any], names: dict[str, str]) -> None:
+        """Sends hints to the people `message` answered, unless the room has
+        moved on by the time they're written."""
+        try:
+            history = await self.db.recent_context(HINT_CONTEXT_MESSAGES)
+            if not history or history[-1]["id"] != message["id"]:
+                return
+            hints = await self.write_hints(history, list(names.values()))
+            latest = await self.db.recent_context(1)
+            if not hints or latest[-1]["id"] != message["id"]:
+                return
+            self.hints = {"messageId": message["id"], "for": list(names), "hints": hints}
+            await self.room.send_to(list(names), {"type": "hints", **self.hints})
+        except Exception:
+            log.exception("Writing hints failed")
 
     def _remember(self) -> None:
         """Files new messages into memory in the background, unless that's
@@ -400,7 +438,8 @@ class Agent:
             for i, part in enumerate(chat_messages(text)):
                 if i:
                     await asyncio.sleep(PAUSE_BETWEEN_MESSAGES)
-                await self._post(part, context_id, reply_to)
+                message = await self._post(part, context_id, reply_to)
+                self._answered = (message, dict(speakers))
 
             if response.stop_reason == "pause_turn":
                 # A long server-side turn (e.g. several searches) was paused:
@@ -435,9 +474,12 @@ class Agent:
             messages.append({"role": "user", "content": results})
         log.warning("Agent stopped after %d steps without finishing", MAX_STEPS)
 
-    async def _post(self, text: str, context_id: int, reply_to: list[str], tool: dict[str, Any] | None = None) -> None:
+    async def _post(
+        self, text: str, context_id: int, reply_to: list[str], tool: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         message = await self.db.add_message(self.user, text, context_id=context_id, reply_to=reply_to, tool=tool)
         await self.room.broadcast({"type": "message", "message": message})
+        return message
 
     async def _list_people(self) -> str:
         """Everyone but the agent, grouped for the model."""
@@ -476,6 +518,34 @@ class Agent:
         speakers[user_id] = new_name
         await self.room.rename(user)
         return f"Renamed {current} to {new_name}.", False
+
+    async def write_hints(self, history: list[dict[str, Any]], who: list[str]) -> list[str] | None:
+        """Two or three suggested next messages for `who` (names), after
+        `history` (the latest messages), or None."""
+        theirs = [m for m in history if m["userName"] in who and m["userId"] != AGENT_ID]
+        task = hint_prompt(
+            agent=self.user.name,
+            who=who,
+            latest=theirs[-1]["text"] if theirs else "",
+            messages=transcript(history, AGENT_ID),
+            notes=self.memory.index() if self.memory is not None else None,
+            previous=self.hints["hints"] if self.hints else [],
+        )
+        try:
+            response = await self.client.beta.messages.create(
+                model=self.model,
+                max_tokens=4000,
+                messages=[{"role": "user", "content": task}],
+                output_config={"effort": "low", "format": {"type": "json_schema", "schema": HINT_SCHEMA}},
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
+            )
+        except anthropic.APIError as e:
+            log.warning("Couldn't write hints: %s", e)
+            return None
+        if response.stop_reason != "end_turn":
+            return None
+        return parse_hints("".join(block.text for block in response.content if block.type == "text"))
 
     async def generate(self, messages: list[BetaMessageParam]) -> BetaMessage | None:
         """One model step, or None if there's nothing usable (API error, refusal)."""

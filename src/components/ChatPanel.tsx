@@ -73,6 +73,32 @@ function Arrival({ live, align, children }: { live?: boolean; align: "start" | "
   )
 }
 
+/**
+ * Suggested next messages under the agent's last reply, each asking it to
+ * find someone. They make room and pop in one after another; tapping one
+ * sends it.
+ */
+function Hints({ hints, disabled, onPick }: { hints: string[]; disabled: boolean; onPick: (hint: string) => void }) {
+  return (
+    <div className="grid motion-safe:animate-message-in">
+      <div className="flex min-h-0 flex-wrap gap-2 pt-0.5" role="group" aria-label="Suggestions">
+        {hints.map((hint, i) => (
+          <button
+            key={hint}
+            type="button"
+            disabled={disabled}
+            onClick={() => onPick(hint)}
+            style={{ animationDelay: `${120 + i * 70}ms` }}
+            className="origin-bottom-left cursor-pointer rounded-full border border-white/25 bg-black px-3.5 py-1.5 text-[13px] text-white/85 transition-[color,border-color,transform] hover:border-white/50 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50 motion-safe:animate-bubble-in"
+          >
+            {hint}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** What I still see with others hidden: my messages, notes only I get, and
  * whatever the agent posted while answering me. */
 function isMine(m: ChatMessage, me: ChatUser | null): boolean {
@@ -134,6 +160,19 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
   useLayoutEffect(() => {
     if (lastMessage?.pending) scrollToEnd()
   }, [lastMessage, scrollToEnd])
+  // Once the agent is done, under its reply if that's still the last thing I see.
+  const hints = !showTyping && lastMessage?.id === chat.hints?.messageId ? chat.hints : null
+  // Hints come a moment after the reply, often after I've nudged the scroll
+  // while reading it, which stops the scroller following the bottom. If I'm
+  // still within a screen of the end, bring them into view (and keep following
+  // as they grow in); if I've scrolled back into history, leave me there.
+  const hintsFor = hints?.messageId
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+    if (hintsFor === undefined || !viewport) return
+    const belowView = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+    if (belowView < viewport.clientHeight) scrollToEnd()
+  }, [hintsFor, scrollToEnd])
 
   // Scrolled near the top of the history: load the page before it.
   const onHistoryScroll = useCallback(() => {
@@ -160,12 +199,16 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
     onCaretMove(p.x, p.y)
   }
 
+  const sendText = (text: string): boolean => {
+    if (!send(text)) return false
+    onSend?.(text)
+    return true
+  }
+
   const submit = (e: FormEvent) => {
     e.preventDefault()
     const text = draft.trim()
-    if (!text || !send(text)) return
-    setDraft("")
-    onSend?.(text)
+    if (text && sendText(text)) setDraft("")
   }
 
   return (
@@ -224,6 +267,11 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
                     </MessageScrollerItem>
                   )
                 })}
+                {hints && (
+                  <MessageScrollerItem key={`hints-${hints.messageId}`} messageId="agent-hints">
+                    <Hints hints={hints.hints} disabled={!connected} onPick={sendText} />
+                  </MessageScrollerItem>
+                )}
                 {showTyping && (
                   <MessageScrollerItem key="agent-typing" messageId="agent-typing">
                     <Arrival live align="start">

@@ -34,6 +34,18 @@ class Room:
         await self.broadcast({"type": "rename", "user": user_json(user)})
         await self.sync_presence()
 
+    async def send_to(self, user_ids: list[str], payload: dict[str, Any]) -> None:
+        """Sends to these people only, on every tab they have open."""
+        sockets = [ws for ws, user in self._sockets.items() if user.id in user_ids]
+
+        async def send(ws: WebSocket) -> None:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                self.leave(ws)
+
+        await asyncio.gather(*(send(ws) for ws in sockets))
+
     def online(self) -> list[User]:
         """Connected users in the order they arrived, once each (a user can
         have several tabs open)."""

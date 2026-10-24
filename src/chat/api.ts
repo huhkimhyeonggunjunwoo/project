@@ -45,6 +45,12 @@ export interface PrivateMessage extends Omit<ServerMessage, "id"> {
   key: string
 }
 
+/** Suggested next messages for me, shown under the agent's reply #messageId. */
+export interface AgentHints {
+  messageId: number
+  hints: string[]
+}
+
 export interface MessagePage {
   /** Oldest first. */
   messages: ServerMessage[]
@@ -67,11 +73,14 @@ export type ServerEvent =
       agentTyping: boolean
       /** Ids of the people that reply is for. */
       agentReplyTo: string[]
+      /** The latest hints, if they're for me. */
+      hints: AgentHints | null
     }
   | { type: "presence"; users: ChatUser[] }
   | { type: "private"; message: PrivateMessage }
   | { type: "rename"; user: ChatUser }
   | { type: "typing"; typing: boolean; replyTo: string[] }
+  | ({ type: "hints" } & AgentHints)
   | { type: "message"; message: ServerMessage; clientId?: string }
   | { type: "error"; message: string }
 

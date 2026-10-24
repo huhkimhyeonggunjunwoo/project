@@ -85,7 +85,7 @@ async def chat_socket(ws: WebSocket) -> None:
     client → {"type": "hello", "token": "<saved token or null>"}   (first frame)
     server → {"type": "welcome", "user": {...}, "token": "...", "history": {...},
               "online": [{...}], "users": [{...}], "agent": {...} | null, "agentTyping": bool,
-              "agentReplyTo": ["<user id>", ...]}
+              "agentReplyTo": ["<user id>", ...], "hints": {...} | null}
               (users: everyone who has ever joined, most recently seen first)
     client → {"type": "send", "text": "...", "clientId": "..."}
     server → {"type": "message", "message": {...}, "clientId"?: "..."}   (to everyone)
@@ -96,6 +96,8 @@ async def chat_socket(ws: WebSocket) -> None:
     server → {"type": "typing", "typing": bool, "replyTo": [...]}
               (to everyone: the agent started / finished answering, and whom)
     server → {"type": "presence", "users": [{...}]}   (to everyone, when who's online changes)
+    server → {"type": "hints", "messageId": n, "for": [...], "hints": ["...", ...]}
+              (just the people the agent's reply #n answered: suggested next messages)
     server → {"type": "error", "message": "..."}
     """
     if not _origin_allowed(ws.headers.get("origin")):
@@ -135,6 +137,7 @@ async def chat_socket(ws: WebSocket) -> None:
                 "agent": user_json(agent.user) if agent is not None else None,
                 "agentTyping": agent is not None and agent.typing,
                 "agentReplyTo": agent.reply_to if agent is not None else [],
+                "hints": agent.hints if agent is not None and agent.hints and user.id in agent.hints["for"] else None,
             }
         )
         if agent is not None:
