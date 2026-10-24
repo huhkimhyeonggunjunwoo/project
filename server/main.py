@@ -95,7 +95,8 @@ async def chat_socket(ws: WebSocket) -> None:
     server → {"type": "message", "message": {...}, "clientId"?: "..."}   (to everyone)
     server → {"type": "message", "message": {...}}   (the agent's reply, to everyone;
               its "replyTo" lists the ids of the people it was answering)
-    server → {"type": "private", "message": {"key": "...", ...}}   (just this client, not stored)
+    server → {"type": "private", "message": {"key": "...", ..., "hints"?: [...]}}
+              (just this client, not stored; hints are suggested replies to show under it)
     server → {"type": "rename", "user": {...}}   (to everyone, when the agent renames someone)
     server → {"type": "typing", "typing": bool, "replyTo": [...]}
               (to everyone: the agent started / finished answering, and whom)

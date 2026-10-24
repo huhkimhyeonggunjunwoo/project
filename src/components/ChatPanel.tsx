@@ -192,17 +192,22 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
   useLayoutEffect(() => {
     if (lastMessage?.pending) scrollToEnd();
   }, [lastMessage, scrollToEnd]);
-  // Once the agent is done, under its reply if that's still the last thing I see.
-  const hints =
-    !showTyping && lastMessage?.id === chat.hints?.messageId
-      ? chat.hints
-      : null;
+  // Once the agent is done, under the last thing I see: the agent's reply
+  // the hints were written for, or a note of mine that comes with its own
+  // (the welcome note's starter hint).
+  const hints = showTyping
+    ? null
+    : lastMessage?.private && lastMessage.hints?.length
+      ? { id: lastMessage.key, hints: lastMessage.hints }
+      : chat.hints && lastMessage?.id === chat.hints.messageId
+        ? { id: `m${chat.hints.messageId}`, hints: chat.hints.hints }
+        : null;
   // Hints come a moment after the reply, often after I've nudged the scroll
   // while reading it, which stops the scroller following the bottom. If the
   // reply ends within a screen of what I see, bring the hints into view (and
   // keep following as they grow in); if I've scrolled back into history,
   // leave me there.
-  const hintsFor = hints?.messageId;
+  const hintsFor = hints?.id;
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     const row = viewport?.querySelector(`[data-message-id="${HINTS_ITEM_ID}"]`);
@@ -321,7 +326,7 @@ function ChatPanelBody({ chat, onCaretMove, onSend }: ChatPanelProps) {
                 })}
                 {hints && (
                   <MessageScrollerItem
-                    key={`hints-${hints.messageId}`}
+                    key={`hints-${hints.id}`}
                     messageId={HINTS_ITEM_ID}
                   >
                     <Hints

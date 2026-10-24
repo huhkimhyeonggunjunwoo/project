@@ -43,6 +43,8 @@ export interface ServerMessage {
 export interface PrivateMessage extends Omit<ServerMessage, "id"> {
   /** Identifies the note, so a reconnect doesn't show it twice. */
   key: string
+  /** Suggested replies to show under it. */
+  hints?: string[]
 }
 
 /** Suggested next messages for me, shown under the agent's reply #messageId. */

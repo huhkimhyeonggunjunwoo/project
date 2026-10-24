@@ -52,6 +52,8 @@ export interface ChatMessage extends Omit<ServerMessage, "id"> {
   private: boolean
   /** Arrived while I'm here, rather than loaded as history: animated in. */
   live?: boolean
+  /** Private notes: suggested replies to show under it. */
+  hints?: string[]
 }
 
 interface PrivateNote extends ChatMessage {

@@ -142,6 +142,8 @@ def test_private_greeting_only_reaches_the_newcomer(client: TestClient) -> None:
         assert greeting["message"]["key"] == "welcome"
         assert greeting["message"]["userId"] == "agent"
         assert "id" not in greeting["message"]
+        # It comes with a first thing to ask, in English like the note.
+        assert greeting["message"]["hints"] == ["Find someone who's a good match for me"]
 
         with client.websocket_connect("/ws", headers=ORIGIN) as b:
             hello(b)
